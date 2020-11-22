@@ -286,22 +286,7 @@ lgb_train = lgb.Dataset(train[FEATS], y_tr)
 lgb_valid = lgb.Dataset(valid[FEATS], y_va)
 _=gc.collect()
 
-
-model = lgb.train(
-                    {'objective': 'binary', 'learning_rate': 0.1, 'metric': 'auc'}, 
-                    lgb_train,
-                    valid_sets=[lgb_train, lgb_valid],
-                    verbose_eval=100,
-                    num_boost_round=10000,
-                    early_stopping_rounds=10
-                )
-print('auc:', roc_auc_score(y_va, model.predict(valid[FEATS])))
-_ = lgb.plot_importance(model)
-
-
-
 if True:
-    model.save_model(f'data/valfull/model_{VERSION}_valfull_cut0_val.pk')
     joblib.dump(valid, f'data/valfull/cv1_{VERSION}_valid.pk')
     del valid, train
     gc.collect()
@@ -340,6 +325,18 @@ if True:
             gc.collect()
     del kdicts
     gc.collect()
+
+model = lgb.train(
+                    {'objective': 'binary', 'learning_rate': 0.1}, 
+                    lgb_train,
+                    valid_sets=[lgb_train, lgb_valid],
+                    verbose_eval=10,
+                    num_boost_round=3000,
+                    early_stopping_rounds=10
+                )
+# print('auc:', roc_auc_score(y_va, model.predict(valid[FEATS])))
+_ = lgb.plot_importance(model)
+model.save_model(f'data/valfull/model_{VERSION}_valfull_cut0_val.pk')
 
 
 
