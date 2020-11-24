@@ -16,6 +16,12 @@ pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows',100)
 
 pd.set_option('display.width', 1000)
+
+def hrfn(val):
+    return int(round(val/(3600*1000) % 24))
+def dayfn(val):
+    return int(round(val/(3600*1000*24) % 7))
+
 # funcs for user stats with loop
 def add_user_feats(df, pdicts, update = True):
     acsu = np.zeros(len(df), dtype=np.uint32)
@@ -29,6 +35,7 @@ def add_user_feats(df, pdicts, update = True):
     #tcidacsu = np.zeros(len(df), dtype=np.uint32)
     #tcidcu = np.zeros(len(df), dtype=np.uint32)
     #tagstat = np.zeros((len(df), 4), dtype=np.uint32)
+    #hrday = np.zeros((len(df), 2), dtype=np.uint16)
     tstamp = np.zeros((len(df), 5), dtype=np.uint32)
     tstavg = np.zeros(len(df), dtype=np.float32)
     #tstprt = np.zeros(len(df), dtype=np.uint32)
@@ -53,6 +60,14 @@ def add_user_feats(df, pdicts, update = True):
             u, pexp, eltim, cid, tag, tcid, tstmp = row
         bid = bdict[cid]
         newbid = bid == pdicts['track_b'][u]
+        '''
+        hr, day = hrfn(tstmp), dayfn(tstmp)
+        if u in pdicts['count_u_dict']:
+            hrday[cnt] = 24 + hr - int(round( pdicts['total_hr'][u] / pdicts['count_u_dict'][u])), \
+                             7 + day - int(round( pdicts['total_wkday'][u] / pdicts['count_u_dict'][u]))
+        else:
+            hrday[cnt] = hr, day
+        '''
         
         ucid = f'{u}__{cid}'
         acsu[cnt] = pdicts['answered_correctly_sum_u_dict'][u]
@@ -73,10 +88,10 @@ def add_user_feats(df, pdicts, update = True):
         
         partsdict[part]['acsu'][cnt]  = pdicts[f'{part}p_answered_correctly_sum_u_dict'][u]
         partsdict[part]['cu'][cnt] = pdicts[f'{part}p_count_u_dict'][u]
-        otherparts = [p for p in range(1,8) if p != part]
         for p in range(1,8):
             if p == part: continue
             partsdict[p]['cu'][cnt] = pdicts[f'{p}p_count_u_dict'][u]
+            partsdict[p]['acsu'][cnt]  = pdicts[f'{p}p_answered_correctly_sum_u_dict'][u]
         '''
         tagct = sum(pdicts['tag_count_u_dict'][f'{u}_{t}'] for t in tags)
         tagls = sum(pdicts['tag_answered_correctly_sum_u_dict'][f'{u}_{t}'] for t in tags) / (tagct+0.01)
@@ -86,6 +101,9 @@ def add_user_feats(df, pdicts, update = True):
         if update:
             #for t in tags: pdicts['tag_count_u_dict'][f'{u}_{t}'] += 1
             pdicts['count_u_dict'][u] += 1
+            #pdicts['total_hr'][u] += hr
+            #pdicts['total_wkday'][u] += day
+          
             for i in list(range(1, 10))[::-1]:
                 pdicts[f'lag_time{i}'][u] = pdicts[f'lag_time{i-1}'][u] 
             pdicts['lag_time0'][u] = tstmp
@@ -115,6 +133,7 @@ def add_user_feats(df, pdicts, update = True):
     df['cid_answered_correctly'] = acsu
     df[[f'lag_content_time{i}' for i in [0,1,2,5,10]]] = tstamp
     df['lag_content_avgtime'] = tstavg
+    #df[['hour', 'day']] = hrday
     #df['lag_content_avgtime'] = tstprt
     #df[['tagct_min', 'tagct_max', 'tagct_mean', 'tag_len']] = tagstat
     del cu, expcu, acsu, expacsu
@@ -150,8 +169,8 @@ def update_user_feats(df, pdicts):
                 pdicts['pexp_count_u_dict'][u] += 1
 
 CUT=0
-DIR='val' # valfull
-VERSION='V12'
+DIR='val'
+VERSION='V1'
 debug = False
 validaten_flg = False
 FILTCOLS = ['row_id', 'user_id', 'content_id', 'content_type_id',  \
@@ -250,10 +269,10 @@ FEATS += [f'counts___feat{i}' for i in range(11)]
 FEATS += [f'avgcorrect___feat{i}' for i in range(11)]
 FEATS += [f'avgcorrect___feat{i}' for i in range(11)]
 FEATS += [f'lag_content_time{i}' for i in [0,1,2,5,10]]
+#FEATS += ['hour', 'day']
 #FEATS += ['tagct_min', 'tagct_max', 'tagct_mean', 'tag_len']
 #FEATS += [f'tag_correct_stat{i}' for i in range(4)]
 
-    
 #dro_cols = list(set(train.columns) - set(FEATS))
 y_tr = train[TARGET]
 y_va = valid[TARGET]
@@ -277,13 +296,17 @@ model = lgb.train(
 print('auc:', roc_auc_score(y_va, model.predict(valid[FEATS])))
 _ = lgb.plot_importance(model)
 
+#### Try 
+#- Any way to do nunique questions - like a boolean array / sparse array
+#- Counts 
+# if - 2(30 samples), 3(25 samples), 5(20 samples), 7(15 samples), 8(10 samples), 
+#- nunique_counts is 5, nunique_counts_ratio is 0.02, top_counts is 30, top_counts_ratio is 0.3,
+# - start with lectures... time since lecture etc. 
+
 #### New 
-#- Add all the parts
-#- Multiple lags
+#- 
 
 # Try storing each day that the user is in, and how many questions per day
-
-
 model.save_model(f'weights/lgb/model_{VERSION}_valfull_cut0_val.pk')
 model1 = lgb.Booster(model_file=f'weights/lgb/model_{VERSION}_valfull_cut0_val.pk' )
 _ = lgb.plot_importance(model1)
@@ -295,17 +318,18 @@ dir(lgb)
 
 '''
 Training until validation scores don't improve for 20 rounds
-[100]	training's binary_logloss: 0.528426	valid_1's binary_logloss: 0.541937
-[200]	training's binary_logloss: 0.525694	valid_1's binary_logloss: 0.539477
-[300]	training's binary_logloss: 0.524243	valid_1's binary_logloss: 0.538392
-[400]	training's binary_logloss: 0.52322	valid_1's binary_logloss: 0.537735
-[500]	training's binary_logloss: 0.52242	valid_1's binary_logloss: 0.537343
-[600]	training's binary_logloss: 0.521785	valid_1's binary_logloss: 0.537053
-[700]	training's binary_logloss: 0.521145	valid_1's binary_logloss: 0.536742
-[800]	training's binary_logloss: 0.520573	valid_1's binary_logloss: 0.536526
+[100]	training's binary_logloss: 0.527935	valid_1's binary_logloss: 0.541822
+[200]	training's binary_logloss: 0.525027	valid_1's binary_logloss: 0.539347
+[300]	training's binary_logloss: 0.523626	valid_1's binary_logloss: 0.538405
+[400]	training's binary_logloss: 0.522586	valid_1's binary_logloss: 0.537781
+[500]	training's binary_logloss: 0.521673	valid_1's binary_logloss: 0.537312
+[600]	training's binary_logloss: 0.520949	valid_1's binary_logloss: 0.537037
+[700]	training's binary_logloss: 0.520319	valid_1's binary_logloss: 0.536781
+[800]	training's binary_logloss: 0.519733	valid_1's binary_logloss: 0.536638
+[900]	training's binary_logloss: 0.519178	valid_1's binary_logloss: 0.536487
 Early stopping, best iteration is:
-[835]	training's binary_logloss: 0.520387	valid_1's binary_logloss: 0.536437
-auc: 0.7804127321104475
+[934]	training's binary_logloss: 0.519006	valid_1's binary_logloss: 0.53643
+auc: 0.7806154497032817
 '''
 
 '''
