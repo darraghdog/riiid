@@ -43,22 +43,23 @@ def add_user_feats(df, pdicts, update = True):
     lectavg = np.zeros((len(df), 3), dtype=np.float32)
     pexpm = np.zeros((len(df), 1), dtype=np.uint8)
     contid = np.zeros((len(df), 1), dtype=np.uint8)
+    qamat = np.zeros((len(df),6), dtype=np.float16)
 
     partsdict = defaultdict(lambda : {'acsu' : np.zeros(len(df), dtype=np.uint32),
                                       'cu' : np.zeros(len(df), dtype=np.uint32)})
 
     itercols = ['user_id','answered_correctly', 'part', \
                     'prior_question_had_explanation', 'prior_question_elapsed_time', 'content_id', 'tags', \
-                        'task_container_id', 'timestamp', 'content_type_id']
+                        'task_container_id', 'timestamp', 'content_type_id', 'user_answer']
     if not update:
         itercols = [f for f in itercols if f!='answered_correctly']
     df['prior_question_had_explanation'] = df['prior_question_had_explanation'].fillna(False).astype(np.uint8)
     
     for cnt,row in enumerate(tqdm(df[itercols].values, total = df.shape[0]) ):
         if update:
-            u, yprev, part, pexp, eltim, cid, tag, tcid, tstmp, ctype = row
+            u, yprev, part, pexp, eltim, cid, tag, tcid, tstmp, ctype, ua = row
         else:
-            u, pexp, eltim, cid, tag, tcid, tstmp, ctype = row
+            u, pexp, eltim, cid, tag, tcid, tstmp, ctype, ua = row
         
         tags = [int(t)  for t in tag.split()]
         if ctype==1:
@@ -106,7 +107,12 @@ def add_user_feats(df, pdicts, update = True):
         tstavg[cnt] = pdicts['lag_time_avg'][u]/ (pdicts['count_u_dict'][u]+0.1)
         ctunqsum = len(pdicts['ctunique'][uiddict[u]])
         ctunq[cnt] = ctunqsum, 1000*(ctunqsum / (pdicts['count_u_dict'][u] + 0.01))
-        
+        qamat[cnt] = pdicts['qaRankcum'][u] / (pdicts['count_u_dict'][u] + 0.01), \
+                pdicts['qaRatiocum'][u] / (pdicts['count_u_dict'][u] + 0.01), \
+                pdicts['qaRankcum'][u] / (pdicts['qaRankCorrectcum'][u] + 0.01), \
+                pdicts['qaRatiocum'][u] / (pdicts['qaRatioCorrectcum'][u] + 0.01), \
+                pdicts['qaRankFirstcum'][u] / (pdicts['qaRankCorrectFirstcum'][u] + 0.01), \
+                pdicts['qaRatioFirstcum'][u] / (pdicts['qaRatioCorrectFirstcum'][u] + 0.01)
         
         partsdict[part]['acsu'][cnt]  = pdicts[f'{part}p_answered_correctly_sum_u_dict'][u]
         partsdict[part]['cu'][cnt] = pdicts[f'{part}p_count_u_dict'][u]
@@ -117,6 +123,34 @@ def add_user_feats(df, pdicts, update = True):
             
         if update:
             pdicts['count_u_dict'][u] += 1
+            try:
+                pdicts['qaRankCorrectcum'][u] += pdicts['qaRank'][(cid, pdicts['qaCorrect'][cid])]
+                pdicts['qaRatioCorrectcum'][u] += pdicts['qaRatio'][(cid, pdicts['qaCorrect'][cid])]
+            except:
+                pdicts['qaRankCorrectcum'][u] += 0
+                pdicts['qaRatioCorrectcum'][u] += 1.
+            try:
+                pdicts['qaRankcum'][u] += pdicts['qaRank'][(cid, ua)]
+                pdicts['qaRatiocum'][u] += pdicts['qaRatio'][(cid, ua)]
+            except:
+                pdicts['qaRankcum'][u] += 4.
+                pdicts['qaRatiocum'][u] += 0.1
+            
+            # Only add this on first attempts, and track first attempt success rate
+            if pdicts['content_id_answered_correctly_sum_u_dict'][ucid] == 0:
+                try:
+                    pdicts['qaRankCorrectFirstcum'][u] += pdicts['qaRankFirst'][(cid, pdicts['qaCorrect'][cid])]
+                    pdicts['qaRatioCorrectFirstcum'][u] += pdicts['qaRatioFirst'][(cid, pdicts['qaCorrect'][cid])]
+                except:
+                    pdicts['qaRankCorrectFirstcum'][u] += 0
+                    pdicts['qaRatioCorrectFirstcum'][u] += 1.
+                try:
+                    pdicts['qaRankFirstcum'][u] += pdicts['qaRankFirst'][(cid, ua)]
+                    pdicts['qaRatioFirstcum'][u] += pdicts['qaRatioFirst'][(cid, ua)]
+                except:
+                    pdicts['qaRankFirstcum'][u] += 4.
+                    pdicts['qaRatioFirstcum'][u] += 0.1
+                
             pdicts['ctunique'][uiddict[u]].add(cid)
             
             for i in list(range(1, 10))[::-1]:
@@ -150,6 +184,7 @@ def add_user_feats(df, pdicts, update = True):
     df[['ctunique_sum', 'ctunique_attempt_ration']] = ctunq
     df[[f'lecture_stats_{i}' for i in range(7)]] = lectct
     df[[f'lecture_stats_{i}' for i in range(7,10)]] = lectavg
+    df[[f'rank_stats_{i}' for i in range(6)]] = qamat
     del cu, expcu, acsu, expacsu
     for t, i in enumerate(range(1,8)):  
         df[f'counts___feat{t1+t+1}'] = partsdict[i]['cu']
@@ -186,7 +221,8 @@ debug = False
 validaten_flg = False
 FILTCOLS = ['row_id', 'user_id', 'content_id', 'content_type_id',  \
                'answered_correctly', 'prior_question_elapsed_time', \
-                   'prior_question_had_explanation', 'task_container_id', 'timestamp']
+                   'prior_question_had_explanation', 'task_container_id', \
+                       'timestamp', 'user_answer']
 valid = pd.read_feather(f'data/{DIR}/cv{CUT+1}_valid.feather')[FILTCOLS]
 train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS]
 
@@ -207,6 +243,37 @@ train.user_id.drop_duplicates().isin
 
 bdict = questions_df.set_index('question_id')['bundle_id'].to_dict()
 
+keepcols = ['question_id', 'part', 'tags', 'bundle_id', 'correct_answer']
+train = pd.merge(train, questions_df[keepcols], left_on = 'content_id', right_on = 'question_id', how = 'left')
+valid = pd.merge(valid, questions_df[keepcols], left_on = 'content_id', right_on = 'question_id', how = 'left')
+formatcols =  ['question_id', 'part', 'bundle_id', 'correct_answer', 'user_answer']
+train[formatcols] = train[formatcols].fillna(0).astype(np.int16)
+valid[formatcols] = valid[formatcols].fillna(0).astype(np.int16)
+
+train.groupby(['question_id'])['answered_correctly'].count()
+
+# How correct is the answer
+def qaRanks(df):
+    aggdf1 = df.groupby(['question_id', 'user_answer', 'correct_answer'])['answered_correctly'].count()
+    aggdf2 = df.groupby(['question_id'])['answered_correctly'].count()
+    aggdf = pd.merge(aggdf1, aggdf2, left_index=True, right_index = True).reset_index()
+    aggdf.columns = ['question_id', 'user_answer', 'correct_answer', 'answcount', 'quescount']
+    aggdf['answerratio'] = (aggdf.answcount / aggdf.quescount).astype(np.float16)
+    aggdf['answerrank'] = aggdf.groupby("question_id")["answerratio"].rank("dense", ascending=False).astype(np.int8)
+    aggdf.query('user_answer == correct_answer').answerrank.value_counts()
+    aggdf.query('question_id == 982')
+    qaRank = aggdf.set_index(['question_id', 'user_answer']).answerrank.to_dict()
+    qaRatio = aggdf.set_index(['question_id', 'user_answer']).answerratio.to_dict()
+    qaCorrect = questions_df.set_index('question_id').correct_answer.to_dict()
+    return qaRank, qaRatio, qaCorrect
+
+ix = train.content_type_id == False
+qaRank, qaRatio, qaCorrect = qaRanks(train[ix])
+answerrank = train.groupby(["user_id", "content_id"])["timestamp"]\
+                    .rank("dense", ascending=True).astype(np.int8)
+qaRankFirst, qaRatioFirst, _ = qaRanks(train[ix][answerrank==1])
+
+
 # changing dtype to avoid lightgbm error
 train['prior_question_had_explanation'] = train.prior_question_had_explanation.fillna(False).astype('int8')
 valid['prior_question_had_explanation'] = valid.prior_question_had_explanation.fillna(False).astype('int8')
@@ -226,6 +293,7 @@ content_df4 = train.query('content_type_id == 0')[['content_id', 'user_id','answ
                 .drop_duplicates(keep='last')
 content_df4 = content_df4[['content_id','answered_correctly']].groupby(['content_id']).agg(['mean']).astype(np.float16).reset_index()
 content_df4.columns = ['content_id', 'answered_correctly_last_avg_c']
+
 content_df  = pd.merge(content_df1, content_df2, on = 'content_id')
 content_df  = pd.merge(content_df, content_df3, on = 'content_id')
 content_df  = pd.merge(content_df, content_df4, on = 'content_id')
@@ -237,13 +305,6 @@ train = pd.merge(train, content_df, on=['content_id'], how="left")
 valid = pd.merge(valid, content_df, on=['content_id'], how="left")
 
 
-# part
-questions_df['part'] = questions_df['part'].astype(np.uint8)
-train = pd.merge(train, questions_df[['question_id', 'part', 'tags']], left_on = 'content_id', right_on = 'question_id', how = 'left')
-valid = pd.merge(valid, questions_df[['question_id', 'part', 'tags']], left_on = 'content_id', right_on = 'question_id', how = 'left')
-
-train[['part', 'question_id']] = train[['part', 'question_id']].fillna(0).astype(np.int16)
-valid[['part', 'question_id']] = valid[['part', 'question_id']].fillna(0).astype(np.int16)
 
 
 # tags
@@ -301,6 +362,19 @@ pdicts = {'answered_correctly_sum_u_dict' : defaultdict(int),
           'cum_ques_since_lecture' : defaultdict(int),
           'ctunique' : [set() for i in range(nuser+1)],
           'uiddict' : uiddict,
+          'qaRank' : qaRank,
+          'qaRatio' : qaRatio,
+          'qaRankFirst' : qaRankFirst, 
+          'qaRatioFirst' : qaRatioFirst, 
+          'qaCorrect': qaCorrect,
+          'qaRankcum' : defaultdict(int),
+          'qaRatiocum' : defaultdict(int),
+          'qaRankFirstcum' : defaultdict(int),
+          'qaRatioFirstcum' : defaultdict(int),
+          'qaRankCorrectcum' : defaultdict(int),
+          'qaRatioCorrectcum' : defaultdict(int),
+          'qaRankCorrectFirstcum' : defaultdict(int),
+          'qaRatioCorrectFirstcum' : defaultdict(int),
           'content_id_lag' : defaultdict(int), 
           'pexp_answered_correctly_sum_u_dict' : defaultdict(int),
           'pexp_count_u_dict': defaultdict(int)}
@@ -312,12 +386,11 @@ for p in train.part.unique():
     pdicts[f'{p}p_count_u_dict'] =  defaultdict(int)
     pdicts[f'{p}l_count_u_dict'] =  defaultdict(int)
 
-
 train = add_user_feats(train, pdicts)
 valid = add_user_feats(valid, pdicts)
 
 train.shape
-train[[f'lecture_stats_{i}' for i in range(0,10)]].sample(11)
+valid[[f'rank_stats_{i}' for i in range(4)]].sample(100)
 
 train = train.loc[train.content_type_id == False].reset_index(drop=True)
 valid = valid.loc[valid.content_type_id == False].reset_index(drop=True)
@@ -339,6 +412,11 @@ valid['prior_question_elapsed_time_mean'] = valid.prior_question_elapsed_time.fi
 
 # use only last 30M training data for limited memory on kaggle env.
 #train = train[-30000000:]
+train[[f'rank_stats_diff_{i}' for i in [0,1]]] = (train[[f'rank_stats_{i}' for i in [0,3]]].values - \
+                                            train[[f'rank_stats_{i}' for i in [2,1]]].values)
+
+valid[[f'rank_stats_diff_{i}' for i in [0,1]]] = (valid[[f'rank_stats_{i}' for i in [0,3]]].values - \
+                                            valid[[f'rank_stats_{i}' for i in [2,1]]].values)
 
 TARGET = 'answered_correctly'
 FEATS = ['answered_correctly_avg_c', 'attempts_avg_c', 'answered_correctly_first_avg_c', 'cid_answered_correctly', \
@@ -353,13 +431,15 @@ FEATS += [f'lecture_stats_{i}' for i in range(10)]
 #FEATS += [f'lda_comp{i}' for i in range(5)]
 FEATS += [f'tag{i}' for i in range(6)]
 FEATS += ['content_id']
+FEATS += [f'rank_stats_{i}' for i in range(6)]
+FEATS += [f'rank_stats_diff_{i}' for i in range(2)]
 #FEATS += [f'lecture_stats_type_{l}' for l in range(9)]
 
 y_tr = train[TARGET]
 y_va = valid[TARGET]
 _=gc.collect()
 
-categoricals = ['part', 'content_id', 'user_id_le'] + [f'tag{i}' for i in range(6)]
+categoricals = ['part', 'content_id'] + [f'tag{i}' for i in range(6)]
 lgb_train = lgb.Dataset(train[FEATS], y_tr, categorical_feature = categoricals)
 lgb_valid = lgb.Dataset(valid[FEATS], y_va, categorical_feature = categoricals)
 _=gc.collect()
@@ -375,26 +455,49 @@ model = lgb.train(
                     early_stopping_rounds=40,
                 )
 print('auc:', roc_auc_score(y_va.values, model.predict(valid[FEATS])  )  )
-_ = lgb.plot_importance(model, max_num_features = 50, figsize = (5,10))
+_ = lgb.plot_importance(model, max_num_features = 64, figsize = (5,15))
 
 #### Try 
 #- Any way to do nunique questions - like a boolean array / sparse array
-#- Counts 
-# if - 2(30 samples), 3(25 samples), 5(20 samples), 7(15 samples), 8(10 samples), 
-#- nunique_counts is 5, nunique_counts_ratio is 0.02, top_counts is 30, top_counts_ratio is 0.3,
-# - start with lectures... time since lecture etc. 
+#- average sucess on second, third try
 
 #### New 
 #- Ctunique
 #- Remove duplicated feats :( in FEATS)
+#- Rank and ratio of user answer vs mean answers
 #- Lectures
 # Add tags and content_id as categorical with a min_data_per_group
+
+
 #- Look at these features : https://www.kaggle.com/calebeverett/riiid-submit : https://www.kaggle.com/c/talkingdata-adtracking-fraud-detection/discussion/56475
 # - LDA topics of IPs related to app.
 # - LDA over tags
 # ad task_container_id seq
 
 # Target 0.7868
+
+'''
+Training until validation scores don't improve for 40 rounds
+[100]	training's binary_logloss: 0.521987	valid_1's binary_logloss: 0.536648
+[200]	training's binary_logloss: 0.517656	valid_1's binary_logloss: 0.533661
+[300]	training's binary_logloss: 0.515278	valid_1's binary_logloss: 0.532324
+[400]	training's binary_logloss: 0.513647	valid_1's binary_logloss: 0.531481
+[500]	training's binary_logloss: 0.512292	valid_1's binary_logloss: 0.530921
+[600]	training's binary_logloss: 0.511231	valid_1's binary_logloss: 0.530542
+[700]	training's binary_logloss: 0.510327	valid_1's binary_logloss: 0.530229
+[800]	training's binary_logloss: 0.509476	valid_1's binary_logloss: 0.529959
+[900]	training's binary_logloss: 0.508628	valid_1's binary_logloss: 0.529666
+[1000]	training's binary_logloss: 0.507972	valid_1's binary_logloss: 0.529513
+[1100]	training's binary_logloss: 0.50722	valid_1's binary_logloss: 0.529307
+[1200]	training's binary_logloss: 0.506693	valid_1's binary_logloss: 0.529208
+[1300]	training's binary_logloss: 0.505982	valid_1's binary_logloss: 0.52906
+[1400]	training's binary_logloss: 0.505469	valid_1's binary_logloss: 0.529013
+[1500]	training's binary_logloss: 0.50501	valid_1's binary_logloss: 0.528977
+Early stopping, best iteration is:
+[1547]	training's binary_logloss: 0.504705	valid_1's binary_logloss: 0.528942
+auc: 0.7885209883853755
+'''
+
 
 '''
 Training until validation scores don't improve for 40 rounds
