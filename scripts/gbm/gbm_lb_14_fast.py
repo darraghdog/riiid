@@ -409,22 +409,16 @@ valid[[f'rank_stats_diff_{i}' for i in [0,1]]] = (valid[[f'rank_stats_{i}' for i
                                             valid[[f'rank_stats_{i}' for i in [2,1]]].values)
 
 TARGET = 'answered_correctly'
-FEATS = ['answered_correctly_avg_c', 'attempts_avg_c', 'answered_correctly_first_avg_c', 'cid_answered_correctly', \
+'''FEATS = ['answered_correctly_avg_c', 'attempts_avg_c', 'answered_correctly_first_avg_c', 'cid_answered_correctly', \
          'content_id', 'part', 'prior_question_had_explanation', 'prior_question_elapsed_time', \
          'answered_correctly_ct_c', 'answered_correctly_last_avg_c', 'lag_content_avgtime']
 FEATS += [f'counts___feat{i}' for i in range(11)]
 FEATS += [f'avgcorrect___feat{i}' for i in range(11)]
-#FEATS += [f'avgcorrect___feat{i}' for i in range(11)]
 FEATS += [f'lag_content_time{i}' for i in [0,1,2,5,10]]
-#FEATS += ['ctunique_sum', 'ctunique_attempt_ration']
 FEATS += [f'lecture_stats_{i}' for i in range(10)]
-#FEATS += [f'lda_comp{i}' for i in range(5)]
 FEATS += [f'tag{i}' for i in range(6)]
-#FEATS += [f'rank_stats_{i}' for i in range(6)]
-#FEATS += [f'rank_stats_diff_{i}' for i in range(2)]
 FEATS += [f'rank_stats_{i}' for i in [1,3,5]]
-FEATS += [f'rank_stats_diff_{i}' for i in [1]]
-#FEATS += [f'lecture_stats_type_{l}' for l in range(9)]
+FEATS += [f'rank_stats_diff_{i}' for i in [1]]'''
 
 y_tr = train[TARGET]
 y_va = valid[TARGET]
