@@ -38,7 +38,7 @@ def add_user_feats(df, pdicts, update = True):
     cidcu = np.zeros(len(df), dtype=np.uint32)
     tstamp = np.zeros((len(df), 5), dtype=np.uint32)
     tstavg = np.zeros(len(df), dtype=np.float32)
-    ctunq = np.zeros((len(df), 2), dtype=np.uint32)
+    #ctunq = np.zeros((len(df), 2), dtype=np.uint32)
     lectct = np.zeros((len(df), 7), dtype=np.uint32)
     lectavg = np.zeros((len(df), 3), dtype=np.float32)
     pexpm = np.zeros((len(df), 1), dtype=np.uint8)
@@ -61,7 +61,6 @@ def add_user_feats(df, pdicts, update = True):
         else:
             u, pexp, eltim, cid, tag, tcid, tstmp, ctype, ua = row
         
-        tags = [int(t)  for t in tag.split()]
         if ctype==1:
             lectcid, lpart, ltype_of = cid, ldict['part'][cid], ldict['type_of'][cid]
             pdicts['cum_lecture_ct'][u] += 1
@@ -105,8 +104,8 @@ def add_user_feats(df, pdicts, update = True):
         cidcu[cnt] = pdicts['content_id_count_u_dict'][ucid]
         tstamp[cnt] = [tstmp - pdicts[f'lag_time{i}'][u] for i in [0,1,2,4,9]]
         tstavg[cnt] = pdicts['lag_time_avg'][u]/ (pdicts['count_u_dict'][u]+0.1)
-        ctunqsum = len(pdicts['ctunique'][uiddict[u]])
-        ctunq[cnt] = ctunqsum, 1000*(ctunqsum / (pdicts['count_u_dict'][u] + 0.01))
+        #ctunqsum = len(pdicts['ctunique'][uiddict[u]])
+        #ctunq[cnt] = ctunqsum, 1000*(ctunqsum / (pdicts['count_u_dict'][u] + 0.01))
         qamat[cnt] = pdicts['qaRankcum'][u] / (pdicts['count_u_dict'][u] + 0.01), \
                 pdicts['qaRatiocum'][u] / (pdicts['count_u_dict'][u] + 0.01), \
                 pdicts['qaRankcum'][u] / (pdicts['qaRankCorrectcum'][u] + 0.01), \
@@ -123,6 +122,7 @@ def add_user_feats(df, pdicts, update = True):
             
         if update:
             pdicts['count_u_dict'][u] += 1
+            
             try:
                 pdicts['qaRankCorrectcum'][u] += pdicts['qaRank'][(cid, pdicts['qaCorrect'][cid])]
                 pdicts['qaRatioCorrectcum'][u] += pdicts['qaRatio'][(cid, pdicts['qaCorrect'][cid])]
@@ -151,7 +151,7 @@ def add_user_feats(df, pdicts, update = True):
                     pdicts['qaRankFirstcum'][u] += 4.
                     pdicts['qaRatioFirstcum'][u] += 0.1
                 
-            pdicts['ctunique'][uiddict[u]].add(cid)
+            #pdicts['ctunique'][uiddict[u]].add(cid)
             
             for i in list(range(1, 10))[::-1]:
                 pdicts[f'lag_time{i}'][u] = pdicts[f'lag_time{i-1}'][u] 
@@ -181,7 +181,7 @@ def add_user_feats(df, pdicts, update = True):
     df['cid_answered_correctly'] = acsu
     df[[f'lag_content_time{i}' for i in [0,1,2,5,10]]] = tstamp
     df['lag_content_avgtime'] = tstavg
-    df[['ctunique_sum', 'ctunique_attempt_ration']] = ctunq
+    #df[['ctunique_sum', 'ctunique_attempt_ration']] = ctunq
     df[[f'lecture_stats_{i}' for i in range(7)]] = lectct
     df[[f'lecture_stats_{i}' for i in range(7,10)]] = lectavg
     df[[f'rank_stats_{i}' for i in range(6)]] = qamat
@@ -235,10 +235,6 @@ ldf.type_of = ldf.type_of.str.replace(' ', '_')
 ldict = ldf.set_index('lecture_id').to_dict()
 lecture_types = [t for t in ldf.type_of.unique() if t!= 'starter']
 
-adf = pd.merge(valid.query('content_type_id == 1'), ldf, left_on='content_id', right_on = 'lecture_id', how = 'left')
-
-adf[['user_id', 'type_of']].groupby('type_of')['user_id'].count()
-
 train.user_id.drop_duplicates().isin
 
 bdict = questions_df.set_index('question_id')['bundle_id'].to_dict()
@@ -250,8 +246,6 @@ formatcols =  ['question_id', 'part', 'bundle_id', 'correct_answer', 'user_answe
 train[formatcols] = train[formatcols].fillna(0).astype(np.int16)
 valid[formatcols] = valid[formatcols].fillna(0).astype(np.int16)
 
-train.groupby(['question_id'])['answered_correctly'].count()
-
 # How correct is the answer
 def qaRanks(df):
     aggdf1 = df.groupby(['question_id', 'user_answer', 'correct_answer'])['answered_correctly'].count()
@@ -260,19 +254,17 @@ def qaRanks(df):
     aggdf.columns = ['question_id', 'user_answer', 'correct_answer', 'answcount', 'quescount']
     aggdf['answerratio'] = (aggdf.answcount / aggdf.quescount).astype(np.float16)
     aggdf['answerrank'] = aggdf.groupby("question_id")["answerratio"].rank("dense", ascending=False).astype(np.int8)
-    aggdf.query('user_answer == correct_answer').answerrank.value_counts()
-    aggdf.query('question_id == 982')
+    rankDf = aggdf.set_index('question_id')[['answerrank', 'answerratio', 'answcount']].reset_index()
     qaRank = aggdf.set_index(['question_id', 'user_answer']).answerrank.to_dict()
     qaRatio = aggdf.set_index(['question_id', 'user_answer']).answerratio.to_dict()
     qaCorrect = questions_df.set_index('question_id').correct_answer.to_dict()
-    return qaRank, qaRatio, qaCorrect
+    return qaRank, qaRatio, qaCorrect, rankDf
 
 ix = train.content_type_id == False
-qaRank, qaRatio, qaCorrect = qaRanks(train[ix])
+qaRank, qaRatio, qaCorrect, rankDf = qaRanks(train[ix])
 answerrank = train.groupby(["user_id", "content_id"])["timestamp"]\
                     .rank("dense", ascending=True).astype(np.int8)
-qaRankFirst, qaRatioFirst, _ = qaRanks(train[ix][answerrank==1])
-
+qaRankFirst, qaRatioFirst, _, _ = qaRanks(train[ix][answerrank==1])
 
 # changing dtype to avoid lightgbm error
 train['prior_question_had_explanation'] = train.prior_question_had_explanation.fillna(False).astype('int8')
@@ -301,11 +293,9 @@ content_df.columns
 del content_df1, content_df2, content_df3, content_df4
 gc.collect()
 
+content_df.iloc[:,1:] = content_df.iloc[:,1:].astype(np.float16)
 train = pd.merge(train, content_df, on=['content_id'], how="left")
 valid = pd.merge(valid, content_df, on=['content_id'], how="left")
-
-
-
 
 # tags
 train.tags = train.tags.fillna('')
@@ -331,9 +321,9 @@ else:
     train[[f'lda_comp{i}' for i in range(5)]] = loadobj(f'data/val/trainlda_{VERSION}.pk')
     valid[[f'lda_comp{i}' for i in range(5)]] = loadobj(f'data/val/validlda_{VERSION}.pk')
 '''
-uiddict = dict((u,t) for t,u in \
-               enumerate(set(train.user_id.unique().tolist()+valid.user_id.unique().tolist())))
-nuser = max([k for k in uiddict.values()])
+#uiddict = dict((u,t) for t,u in \
+#               enumerate(set(train.user_id.unique().tolist()+valid.user_id.unique().tolist())))
+#nuser = max([k for k in uiddict.values()])
 
 # user stats features with loops
 pdicts = {'answered_correctly_sum_u_dict' : defaultdict(int),
@@ -360,8 +350,8 @@ pdicts = {'answered_correctly_sum_u_dict' : defaultdict(int),
           'prior_explanation2' : defaultdict(int),
           'prior_explanation3' : defaultdict(int),
           'cum_ques_since_lecture' : defaultdict(int),
-          'ctunique' : [set() for i in range(nuser+1)],
-          'uiddict' : uiddict,
+          #'ctunique' : [set() for i in range(nuser+1)],
+          #'uiddict' : uiddict,
           'qaRank' : qaRank,
           'qaRatio' : qaRatio,
           'qaRankFirst' : qaRankFirst, 
@@ -420,26 +410,27 @@ valid[[f'rank_stats_diff_{i}' for i in [0,1]]] = (valid[[f'rank_stats_{i}' for i
 
 TARGET = 'answered_correctly'
 FEATS = ['answered_correctly_avg_c', 'attempts_avg_c', 'answered_correctly_first_avg_c', 'cid_answered_correctly', \
-         'part', 'prior_question_had_explanation', 'prior_question_elapsed_time', \
+         'content_id', 'part', 'prior_question_had_explanation', 'prior_question_elapsed_time', \
          'answered_correctly_ct_c', 'answered_correctly_last_avg_c', 'lag_content_avgtime']
 FEATS += [f'counts___feat{i}' for i in range(11)]
 FEATS += [f'avgcorrect___feat{i}' for i in range(11)]
 #FEATS += [f'avgcorrect___feat{i}' for i in range(11)]
 FEATS += [f'lag_content_time{i}' for i in [0,1,2,5,10]]
-FEATS += ['ctunique_sum', 'ctunique_attempt_ration']
+#FEATS += ['ctunique_sum', 'ctunique_attempt_ration']
 FEATS += [f'lecture_stats_{i}' for i in range(10)]
 #FEATS += [f'lda_comp{i}' for i in range(5)]
 FEATS += [f'tag{i}' for i in range(6)]
-FEATS += ['content_id']
-FEATS += [f'rank_stats_{i}' for i in range(6)]
-FEATS += [f'rank_stats_diff_{i}' for i in range(2)]
+#FEATS += [f'rank_stats_{i}' for i in range(6)]
+#FEATS += [f'rank_stats_diff_{i}' for i in range(2)]
+FEATS += [f'rank_stats_{i}' for i in [1,3,5]]
+FEATS += [f'rank_stats_diff_{i}' for i in [1]]
 #FEATS += [f'lecture_stats_type_{l}' for l in range(9)]
 
 y_tr = train[TARGET]
 y_va = valid[TARGET]
 _=gc.collect()
 
-categoricals = ['part', 'content_id'] + [f'tag{i}' for i in range(6)]
+categoricals = ['part', 'lectontent_id'] + [f'tag{i}' for i in range(6)]
 lgb_train = lgb.Dataset(train[FEATS], y_tr, categorical_feature = categoricals)
 lgb_valid = lgb.Dataset(valid[FEATS], y_va, categorical_feature = categoricals)
 _=gc.collect()
@@ -463,10 +454,10 @@ _ = lgb.plot_importance(model, max_num_features = 64, figsize = (5,15))
 
 #### New 
 #- Ctunique
-#- Remove duplicated feats :( in FEATS)
-#- Rank and ratio of user answer vs mean answers
-#- Lectures
-# Add tags and content_id as categorical with a min_data_per_group
+# ** - Remove duplicated feats :( in FEATS)
+# - Rank and ratio of user answer vs mean answers
+# - Lectures
+# ** - Add tags and content_id as categorical with a min_data_per_group
 
 
 #- Look at these features : https://www.kaggle.com/calebeverett/riiid-submit : https://www.kaggle.com/c/talkingdata-adtracking-fraud-detection/discussion/56475
@@ -477,25 +468,48 @@ _ = lgb.plot_importance(model, max_num_features = 64, figsize = (5,15))
 # Target 0.7868
 
 '''
+# Remove ct unique for memory
 Training until validation scores don't improve for 40 rounds
-[100]	training's binary_logloss: 0.521987	valid_1's binary_logloss: 0.536648
-[200]	training's binary_logloss: 0.517656	valid_1's binary_logloss: 0.533661
-[300]	training's binary_logloss: 0.515278	valid_1's binary_logloss: 0.532324
-[400]	training's binary_logloss: 0.513647	valid_1's binary_logloss: 0.531481
-[500]	training's binary_logloss: 0.512292	valid_1's binary_logloss: 0.530921
-[600]	training's binary_logloss: 0.511231	valid_1's binary_logloss: 0.530542
-[700]	training's binary_logloss: 0.510327	valid_1's binary_logloss: 0.530229
-[800]	training's binary_logloss: 0.509476	valid_1's binary_logloss: 0.529959
-[900]	training's binary_logloss: 0.508628	valid_1's binary_logloss: 0.529666
-[1000]	training's binary_logloss: 0.507972	valid_1's binary_logloss: 0.529513
-[1100]	training's binary_logloss: 0.50722	valid_1's binary_logloss: 0.529307
-[1200]	training's binary_logloss: 0.506693	valid_1's binary_logloss: 0.529208
-[1300]	training's binary_logloss: 0.505982	valid_1's binary_logloss: 0.52906
-[1400]	training's binary_logloss: 0.505469	valid_1's binary_logloss: 0.529013
-[1500]	training's binary_logloss: 0.50501	valid_1's binary_logloss: 0.528977
+[100]	training's binary_logloss: 0.522005	valid_1's binary_logloss: 0.536513
+[200]	training's binary_logloss: 0.517841	valid_1's binary_logloss: 0.533511
+[300]	training's binary_logloss: 0.515728	valid_1's binary_logloss: 0.532336
+[400]	training's binary_logloss: 0.514141	valid_1's binary_logloss: 0.531461
+[500]	training's binary_logloss: 0.512944	valid_1's binary_logloss: 0.530925
+[600]	training's binary_logloss: 0.51178	valid_1's binary_logloss: 0.530449
+[700]	training's binary_logloss: 0.51086	valid_1's binary_logloss: 0.530171
+[800]	training's binary_logloss: 0.510065	valid_1's binary_logloss: 0.529965
+[900]	training's binary_logloss: 0.509396	valid_1's binary_logloss: 0.529809
+[1000]	training's binary_logloss: 0.508774	valid_1's binary_logloss: 0.529632
+[1100]	training's binary_logloss: 0.508176	valid_1's binary_logloss: 0.52949
+[1200]	training's binary_logloss: 0.507474	valid_1's binary_logloss: 0.529281
+[1300]	training's binary_logloss: 0.506791	valid_1's binary_logloss: 0.529126
+[1400]	training's binary_logloss: 0.506311	valid_1's binary_logloss: 0.529
 Early stopping, best iteration is:
-[1547]	training's binary_logloss: 0.504705	valid_1's binary_logloss: 0.528942
-auc: 0.7885209883853755
+[1405]	training's binary_logloss: 0.506269	valid_1's binary_logloss: 0.52899
+auc: 0.788436261707026
+'''
+
+'''
+Training until validation scores don't improve for 40 rounds
+[100]	training's binary_logloss: 0.521941	valid_1's binary_logloss: 0.536619
+[200]	training's binary_logloss: 0.517715	valid_1's binary_logloss: 0.533693
+[300]	training's binary_logloss: 0.515373	valid_1's binary_logloss: 0.532383
+[400]	training's binary_logloss: 0.513757	valid_1's binary_logloss: 0.531588
+[500]	training's binary_logloss: 0.512462	valid_1's binary_logloss: 0.530979
+[600]	training's binary_logloss: 0.511447	valid_1's binary_logloss: 0.530575
+[700]	training's binary_logloss: 0.510686	valid_1's binary_logloss: 0.530361
+[800]	training's binary_logloss: 0.509906	valid_1's binary_logloss: 0.530124
+[900]	training's binary_logloss: 0.509147	valid_1's binary_logloss: 0.529869
+[1000]	training's binary_logloss: 0.508407	valid_1's binary_logloss: 0.529674
+[1100]	training's binary_logloss: 0.507772	valid_1's binary_logloss: 0.529575
+[1200]	training's binary_logloss: 0.50696	valid_1's binary_logloss: 0.52935
+[1300]	training's binary_logloss: 0.506307	valid_1's binary_logloss: 0.529213
+[1400]	training's binary_logloss: 0.505698	valid_1's binary_logloss: 0.529065
+[1500]	training's binary_logloss: 0.505216	valid_1's binary_logloss: 0.528985
+[1600]	training's binary_logloss: 0.504641	valid_1's binary_logloss: 0.528929
+Early stopping, best iteration is:
+[1645]	training's binary_logloss: 0.504318	valid_1's binary_logloss: 0.528858
+auc: 0.7885549069565729
 '''
 
 
