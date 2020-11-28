@@ -1,6 +1,9 @@
 # https://www.kaggle.com/its7171/lgbm-with-loop-feature-engineering/#data
 import os
-os.chdir('/Users/dhanley/Documents/riiid/')
+import sys
+os.chdir('/data/riiid')
+sys.path.insert(0, '/data/riiid')
+#os.chdir('/Users/dhanley/Documents/riiid/')
 import sys
 import pandas as pd
 import numpy as np
@@ -277,7 +280,7 @@ def update_user_feats(df, pdicts, kdicts):
             
 
 CUT=0
-DIR='valfull'
+DIR='val'#'valfull'
 VERSION='V14'
 debug = False
 validaten_flg = False
@@ -388,13 +391,17 @@ valid = valid.loc[valid.content_type_id == False].reset_index(drop=True)
 #train = train.loc[train.content_type_id == False].reset_index(drop=True)
 #valid = valid.loc[valid.content_type_id == False].reset_index(drop=True)
 
+def split_tags(s, dummy = 188):
+    try:
+        s = s.split(' ')
+        l = list(map(int, s))
+        l += [dummy]*(6-len(l))
+        return l
+    except:
+        return [dummy]*6
 
-train[[f'tag{i}' for i in range(6)]] = \
-    train.tags.apply(lambda x: list(map(int, x.split(' ')))+[188]*(6-len(x.split(' '))) ).tolist()
-train[[f'tag{i}' for i in range(6)]] = train[[f'tag{i}' for i in range(6)]].astype(np.uint8)
-valid[[f'tag{i}' for i in range(6)]] = \
-    valid.tags.apply(lambda x: list(map(int, x.split(' ')))+[188]*(6-len(x.split(' '))) ).tolist()
-valid[[f'tag{i}' for i in range(6)]] = valid[[f'tag{i}' for i in range(6)]].astype(np.uint8)
+valid[[f'tag{i}' for i in range(6)]] = np.array(valid.tags.apply(split_tags).tolist()).astype(np.uint16)
+train[[f'tag{i}' for i in range(6)]] = np.array(train.tags.apply(split_tags).tolist()).astype(np.uint16)
 
 # fill with mean value for prior_question_elapsed_time
 # note that `train.prior_question_elapsed_time.mean()` dose not work!
@@ -438,10 +445,15 @@ FEATS += [f'rank_stats_diff_{i}' for i in [1]]
 y_tr = train[TARGET]
 y_va = valid[TARGET]
 _=gc.collect()
+X_train_np = train[FEATS].values.astype(np.float32)
+X_valid_np = valid[FEATS].values.astype(np.float32)
+_=gc.collect()
 
 categoricals = ['part', 'content_id'] + [f'tag{i}' for i in range(6)]
-lgb_train = lgb.Dataset(train[FEATS], y_tr, categorical_feature = categoricals)
-lgb_valid = lgb.Dataset(valid[FEATS], y_va, categorical_feature = categoricals)
+lgb_train = lgb.Dataset(X_train_np, y_tr, categorical_feature = categoricals, feature_name=FEATS)
+del X_train_np, y_tr
+_=gc.collect()
+lgb_valid = lgb.Dataset(X_valid_np, y_va, categorical_feature = categoricals, feature_name=FEATS)
 _=gc.collect()
 
 if True:
