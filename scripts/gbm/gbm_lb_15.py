@@ -300,6 +300,7 @@ def update_user_feats(df, pdicts, kdicts):
 CUT=0
 DIR='val'
 VERSION='V15'
+DUMP=True
 debug = False
 validaten_flg = False
 FILTCOLS = ['row_id', 'user_id', 'content_id', 'content_type_id',  \
@@ -311,14 +312,9 @@ train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS]
 if debug:
     train = train[:100000]
     valid = train[:10000]
-    
-    
-if False:
-    dumpobj(f'data/{DIR}/cv{CUT+1}_valid.pk', valid)
-    dumpobj(f'data/{DIR}/cv{CUT+1}_train.pk', train)
-    v= pd.read_feather(f'data/{DIR}/cv{CUT+1}_valid.feather')
-    v.to_feather()
-    dumpobj(f'data/valfull/valid_{DIR}_{VERSION}.sav', v) 
+
+if DUMP:
+    joblib.dump(valid, f'data/valfull/cv1_VALID_{VERSION}_valid.pk')
 
 questions_df = pd.read_csv('data/questions.csv')
 ldf = pd.read_csv('data/lectures.csv')
@@ -403,9 +399,8 @@ pdicts = {
 
 train = add_user_feats(train, pdicts, kdicts)
 
-if True:
+if DUMP:
     # We need to dump this out to validate properly
-    joblib.dump(valid, f'data/valfull/cv1_VALID_{VERSION}_valid.pk')
     dumpobj(f'data/valfull/cv1_VALID_{VERSION}_cut0_val.pk', pdicts)  
     usercontentKeyMat = np.zeros((kdicts['usercontentCtr'], 2), np.uint32)
     for k1, v1 in tqdm(kdicts['usercontentKey'].items(), 
@@ -486,8 +481,8 @@ _=gc.collect()
 lgb_valid = lgb.Dataset(X_valid_np, y_va, categorical_feature = categoricals, feature_name=FEATS)
 _=gc.collect()
 
-if True:
-    joblib.dump(valid, f'data/valfull/cv1_{VERSION}_valid.pk')
+if DUMP:
+    joblib.dump(valid, f'data/valfull/cv1_{VERSION}_valid_with_FEATS.pk')
     del train
     gc.collect()
     dumpobj(f'data/valfull/cv1_{VERSION}_prior_question_elapsed_time_mean.pk', prior_question_elapsed_time_mean)
@@ -530,9 +525,13 @@ model = lgb.train(
                 )
 # print('auc:', roc_auc_score(y_va, model.predict(valid[FEATS])))
 _ = lgb.plot_importance(model)
-model.save_model(f'data/valfull/model_{VERSION}_valfull_cut0_val.pk')
+y_pred = model.predict(valid[FEATS])
+if DUMP:
+    dumpobj(f'data/valfull/cv1_{VERSION}__y_pred.pk', y_pred)
+    dumpobj(f'data/valfull/cv1_{VERSION}__y_va.pk', y_va)
+    model.save_model(f'data/valfull/model_{VERSION}_valfull_cut0_val.pk')
 
-print('auc:', roc_auc_score(y_va, model.predict(valid[FEATS])))
+print('auc:', roc_auc_score(y_va, y_pred))
 
 
 '''
