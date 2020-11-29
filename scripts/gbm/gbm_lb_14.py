@@ -505,6 +505,27 @@ model.save_model(f'data/valfull/model_{VERSION}_valfull_cut0_val.pk')
 valid = joblib.load(f'data/valfull/cv1_{VERSION}_valid.pk')
 print('auc:', roc_auc_score(y_va, model.predict(valid[FEATS])))
 
+'''
+[100]   training's binary_logloss: 0.525173     valid_1's binary_logloss: 0.529532
+[500]	training's binary_logloss: 0.517292	valid_1's binary_logloss: 0.52235
+[1000]	training's binary_logloss: 0.513778	valid_1's binary_logloss: 0.519638
+[1500]	training's binary_logloss: 0.511745	valid_1's binary_logloss: 0.518352
+[2000]	training's binary_logloss: 0.510237	valid_1's binary_logloss: 0.517575
+[2500]	training's binary_logloss: 0.509053	valid_1's binary_logloss: 0.517001
+[3000]	training's binary_logloss: 0.508217	valid_1's binary_logloss: 0.516666
+[3500]	training's binary_logloss: 0.507492	valid_1's binary_logloss: 0.516421
+[4000]	training's binary_logloss: 0.506834	valid_1's binary_logloss: 0.516215
+[4500]	training's binary_logloss: 0.506178	valid_1's binary_logloss: 0.516013
+[5000]	training's binary_logloss: 0.505617	valid_1's binary_logloss: 0.515858
+[5500]	training's binary_logloss: 0.505065	valid_1's binary_logloss: 0.515741
+[6000]	training's binary_logloss: 0.504587	valid_1's binary_logloss: 0.515646
+[6500]	training's binary_logloss: 0.504138	valid_1's binary_logloss: 0.51558
+[7000]	training's binary_logloss: 0.503697	valid_1's binary_logloss: 0.515502
+[7450]	training's binary_logloss: 0.503304	valid_1's binary_logloss: 0.515445
+Early stopping, best iteration is:
+[7410]	training's binary_logloss: 0.503332	valid_1's binary_logloss: 0.515445
+auc: 0.7970130719101044
+'''
 
 '''
 Training until validation scores don't improve for 10 rounds
