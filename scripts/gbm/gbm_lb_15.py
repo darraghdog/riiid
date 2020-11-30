@@ -298,7 +298,7 @@ def update_user_feats(df, pdicts, kdicts):
             
 
 CUT=0
-DIR='val'
+DIR='valfull'
 VERSION='V15'
 DUMP=True
 debug = False
@@ -410,6 +410,8 @@ if DUMP:
     dumpobj(f'data/valfull/cv1_VALID_{VERSION}_usercontentKeyMat.pk', usercontentKeyMat)
     gc.collect()
     for k, v in kdicts.items():
+        if k == 'usercontentKey':
+            continue
         print(f'Object {k} size {sys.getsizeof(v)}')
         try:
             joblib.dump(v, f'data/valfull/kdicts_VALID_{k}_{VERSION}_cut0_val.sav')  
