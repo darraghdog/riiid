@@ -298,7 +298,7 @@ def update_user_feats(df, pdicts, kdicts):
             
 
 CUT=0
-DIR='val'
+DIR='valfull'
 VERSION='V15'
 DUMP=True
 debug = False
@@ -410,6 +410,8 @@ if DUMP:
     dumpobj(f'data/valfull/cv1_VALID_{VERSION}_usercontentKeyMat.pk', usercontentKeyMat)
     gc.collect()
     for k, v in kdicts.items():
+        if k == 'usercontentKey':
+            continue
         print(f'Object {k} size {sys.getsizeof(v)}')
         try:
             joblib.dump(v, f'data/valfull/kdicts_VALID_{k}_{VERSION}_cut0_val.sav')  
@@ -533,6 +535,22 @@ if DUMP:
 
 print('auc:', roc_auc_score(y_va, y_pred))
 
+'''
+Valfull
+[100]	training's binary_logloss: 0.525311	valid_1's binary_logloss: 0.529654
+[200]	training's binary_logloss: 0.521632	valid_1's binary_logloss: 0.526136
+[300]	training's binary_logloss: 0.519707	valid_1's binary_logloss: 0.524417
+[500]	training's binary_logloss: 0.517344	valid_1's binary_logloss: 0.52235
+[1000]	training's binary_logloss: 0.513836	valid_1's binary_logloss: 0.519677
+[1500]	training's binary_logloss: 0.511755	valid_1's binary_logloss: 0.518356
+[2200]	training's binary_logloss: 0.509707	valid_1's binary_logloss: 0.517248
+[3000]	training's binary_logloss: 0.508156	valid_1's binary_logloss: 0.516593
+[4000]	training's binary_logloss: 0.506716	valid_1's binary_logloss: 0.51612
+[5000]	training's binary_logloss: 0.505527	valid_1's binary_logloss: 0.515821
+[5300]	training's binary_logloss: 0.505175	valid_1's binary_logloss: 0.515731
+[5305]	training's binary_logloss: 0.505167	valid_1's binary_logloss: 0.51573
+auc: 0.7967175583286173
+'''
 
 '''
 Training until validation scores don't improve for 10 rounds
