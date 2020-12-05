@@ -121,9 +121,9 @@ def add_user_feats(df, pdicts, kdicts, update = True):
         acsu[cnt] = pdicts['user_id'].item(ukey, 0)  # pdicts['answered_correctly_sum_u_dict'][u]
         cu[cnt] = pdicts['user_id'].item(ukey, 1)   # pdicts['count_u_dict'][u]
         if pdicts['user_id'].item(ukey, 1) > 0:
-            decay_ratio = pdicts['decay'].item(ukey, 0) / pdicts['decay'].item(ukey, 1)
+            decay_ratio = pdicts['decay'].item(ukey, 0) / (pdicts['decay'].item(ukey, 1) + 0.001)
             acsudec[cnt] = decay_ratio, \
-                            decay_ratio - pdicts['user_id'].item(ukey, 0)/ pdicts['user_id'].item(ukey, 1)
+                            decay_ratio - pdicts['user_id'].item(ukey, 0)/ (pdicts['user_id'].item(ukey, 1) + 0.001)
                     
         
         
