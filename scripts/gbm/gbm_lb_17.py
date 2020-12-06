@@ -58,6 +58,7 @@ def add_user_feats(df, pdicts, kdicts, update = True):
     lectavg = np.zeros((len(df), 3), dtype=np.float32)
     qamat = np.zeros((len(df),6), dtype=np.float16)
     nattmpt = np.zeros((len(df),5), dtype=np.float16)
+    bratio = np.zeros((len(df),3), dtype=np.float16)
     partsdict = defaultdict(lambda : {'acsu' : np.zeros(len(df), dtype=np.uint32),
                                       'cu' : np.zeros(len(df), dtype=np.uint32)})
     
@@ -90,7 +91,6 @@ def add_user_feats(df, pdicts, kdicts, update = True):
             bid = pdicts['bdict'][cid]
             newbid = bid == pdicts['user_id'].item(ukey, 22)
         tstmp = int(round(tstmp/1000))
-        
         if update:
             if ctype==1:
                 lectcid, lpart, ltype_of = cid, ldict['part'][cid], ldict['type_of'][cid]
@@ -129,7 +129,17 @@ def add_user_feats(df, pdicts, kdicts, update = True):
             pdicts['container'][ukey, 7] = pdicts['container'][ukey, 6]
             pdicts['container'][ukey, 6] = pdicts['container'][ukey, 5]
             pdicts['container'][ukey, 5] = tstmp 
-                    
+        
+        if pdicts['user_id'][ukey, 1] == 0:
+            pdicts['bundle'][ukey, 5] = bid
+        else:
+            if bid!=pdicts['bundle'][ukey, 5] :
+                pdicts['bundle'][ukey, 2] = pdicts['bundle'][ukey, 5]
+                pdicts['bundle'][ukey, 5] = bid
+            if pdicts['user_id'][ukey, 1] > 1:
+                pdicts['bundle'][ukey, 0] += pdicts['bundprevtime'][int(pdicts['bundle'][ukey, 2]) ]
+                pdicts['bundle'][ukey, 1]  += eltim
+
         # 4 -> 6 -> 3 -> 2 -> 0 -> 1
         lectct[cnt] = pdicts['lect_time_mat'].item(ukey, 0), pdicts['lect_time_mat'].item(ukey, 1), \
                     pdicts['lect_time_mat'].item(ukey, 6), pdicts['lect_time_mat'].item(ukey, 5), \
@@ -147,11 +157,19 @@ def add_user_feats(df, pdicts, kdicts, update = True):
             acsudec[cnt] = decay_ratio, \
                             decay_ratio - pdicts['user_id'].item(ukey, 0)/ (pdicts['user_id'].item(ukey, 1) + 0.001)
         
-        nattmpt[cnt] = pdicts['container'][ukey, 2] / len(pdicts['container_unq_ques'][u]), \
-                            pdicts['container'][ukey, 3] / (pdicts['container'][ukey, 4] + 0.01), \
-                            tstmp  - pdicts['container'][ukey, 7], \
-                            tstmp  - pdicts['container'][ukey, 6], \
-                            tstmp  - pdicts['container'][ukey, 5]
+        '''
+        bundpathcum:0       bundusercum:1         
+        bundprev:2          userRatioCum:3        userAvgRatioCum:4   bundlecurr:5
+        '''
+        bratio[cnt] = pdicts['bundle'].item(ukey, 0) / (pdicts['bundle'].item(ukey, 1)  + 0.01), \
+                            eltim / (pdicts['bundprevtime'][int(pdicts['bundle'].item(ukey, 2))] + 0.01), \
+                            pdicts['bundle'].item(ukey, 3) / (pdicts['bundle'].item(ukey, 4) + 0.01)
+        
+        nattmpt[cnt] = pdicts['container'].item(ukey, 2) / len(pdicts['container_unq_ques'][u]), \
+                            pdicts['container'].item(ukey, 3) / (pdicts['container'].item(ukey, 4) + 0.01), \
+                            tstmp  - pdicts['container'].item(ukey, 7), \
+                            tstmp  - pdicts['container'].item(ukey, 6), \
+                            tstmp  - pdicts['container'].item(ukey, 5)
                             
         expacsu[cnt] = pdicts['user_id'].item(ukey, 2) # pdicts['pexp_answered_correctly_sum_u_dict'][u]
         expcu[cnt] = pdicts['user_id'].item(ukey, 3) # pdicts['pexp_count_u_dict'][u]
@@ -259,6 +277,7 @@ def add_user_feats(df, pdicts, kdicts, update = True):
     df[[f'rank_stats_{i}' for i in range(6)]] = df[[f'rank_stats_{i}' for i in range(6)]].astype(np.float32)
     df[[f'decayed_avg_correct{i}' for i in range(2)]] = acsudec
     df[[f'nattempt_lag_{i}' for i in range(5)]] = nattmpt
+    df[[f'bundle_time_ratio{i}' for i in range(3)]] = bratio.clip(0,4)
     #df[['ctunique_sum', 'ctunique_attempt_ration']] = ctunq
     del cu, expcu, acsu, expacsu
     for t, i in enumerate(range(1,8)):  
@@ -323,7 +342,7 @@ def update_user_feats(df, pdicts, kdicts):
             
 
 CUT=0
-DIR='valfull'
+DIR='val'
 VERSION='V17'
 debug = False
 validaten_flg = False
@@ -336,7 +355,6 @@ train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS]
 if debug:
     train = train[:100000]
     valid = train[:10000]
-    
     
 if False:
     dumpobj(f'data/{DIR}/cv{CUT+1}_valid.pk', valid)
@@ -364,6 +382,14 @@ train[formatcols] = train[formatcols].fillna(0).astype(np.int16)
 valid[formatcols] = valid[formatcols].fillna(0).astype(np.int16)
 train.tags = train.tags.fillna('')
 valid.tags = valid.tags.fillna('')
+
+ix = train.content_type_id == False
+bdf = train[ix][['user_id', 'timestamp', 'bundle_id', 'prior_question_elapsed_time']].sort_values(['user_id', 'timestamp'])
+bdf = pd.concat([bdf, bdf.shift(1).add_suffix('_lag')], 1)
+bdf = bdf.dropna(how='any').query('user_id == user_id_lag')
+bdf = bdf.groupby(['user_id', 'timestamp', 'bundle_id_lag'])['prior_question_elapsed_time'].mean()
+bdf = bdf.reset_index().dropna(how='any')
+bprevdict = bdf.astype(np.uint32).groupby('bundle_id_lag')['prior_question_elapsed_time'].median().to_dict()
 
 # How correct is the answer
 def qaRanks(df):
@@ -420,8 +446,10 @@ pdicts = {
           'lect_time_cum': np.zeros((int(kdicts['userCtr'] *1.2) , 1), dtype= np.uint64),
           'rank': np.zeros((int(kdicts['userCtr'] *1.2) , 8), dtype= np.float16),
           'decay': np.zeros((int(kdicts['userCtr'] *1.2) , 2), dtype= np.float16),
-          'container': np.zeros((int(kdicts['userCtr'] *1.2) , 8), dtype= np.float16),
+          'container': np.zeros((int(kdicts['userCtr'] *1.2) , 8), dtype= np.float32),
+          'bundle': np.zeros((int(kdicts['userCtr'] *1.2) , 6), dtype= np.float32),
           'container_unq_ques' : defaultdict(set),
+          'bundprevtime' : bprevdict,
           'qaRank' : qaRank,
           'qaRatio' : qaRatio,
           'qaRankFirst' : qaRankFirst, 
@@ -432,12 +460,9 @@ pdicts = {
 train = add_user_feats(train, pdicts, kdicts)
 valid = add_user_feats(valid, pdicts, kdicts)
 
-valid[[f'decayed_avg_correct{i}' for i in range(2)]]
 
 train = train.loc[train.content_type_id == False].reset_index(drop=True)
 valid = valid.loc[valid.content_type_id == False].reset_index(drop=True)
-#train = train.loc[train.content_type_id == False].reset_index(drop=True)
-#valid = valid.loc[valid.content_type_id == False].reset_index(drop=True)
 
 def split_tags(s, dummy = 188):
     try:
@@ -468,6 +493,8 @@ TARGET = 'answered_correctly'
 FEATS = ['answered_correctly_avg_c', 'attempts_avg_c', 'answered_correctly_first_avg_c', 'cid_answered_correctly', \
          'content_id', 'part', 'prior_question_had_explanation', 'prior_question_elapsed_time', 'correct_answer', \
          'answered_correctly_ct_c', 'answered_correctly_last_avg_c', 'lag_content_avgtime']
+    
+    
 FEATS += [f'counts___feat{i}' for i in range(11)]
 FEATS += [f'avgcorrect___feat{i}' for i in range(11)]
 FEATS += [f'lag_content_time{i}' for i in [0,1,2,5,10]]
@@ -477,7 +504,9 @@ FEATS += [f'lecture_stats_{i}' for i in range(10)]
 FEATS += [f'rank_stats_{i}' for i in range(6)]
 FEATS += [f'rank_stats_diff_{i}' for i in range(2)]
 FEATS += [f'nattempt_lag_{i}' for i in range(5)]
+FEATS += [f'bundle_time_ratio{i}' for i in range(3)]
 FEATS += [f'decayed_avg_correct{i}' for i in range(2)]
+
 
 y_tr = train[TARGET]
 y_va = valid[TARGET]
