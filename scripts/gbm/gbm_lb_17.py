@@ -1,9 +1,9 @@
 # https://www.kaggle.com/its7171/lgbm-with-loop-feature-engineering/#data
 import os
 import sys
-#os.chdir('/data/riiid')
-#sys.path.insert(0, '/data/riiid')
-os.chdir('/Users/dhanley/Documents/riiid/')
+os.chdir('/data/riiid')
+sys.path.insert(0, '/data/riiid')
+#os.chdir('/Users/dhanley/Documents/riiid/')
 import sys
 import pandas as pd
 import numpy as np
@@ -296,7 +296,7 @@ def update_user_feats(df, pdicts, kdicts):
             
 
 CUT=0
-DIR='val'#'valfull'
+DIR='valfull'
 VERSION='V17'
 debug = False
 validaten_flg = False
