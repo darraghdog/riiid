@@ -57,6 +57,7 @@ def add_user_feats(df, pdicts, kdicts, update = True):
     lectct = np.zeros((len(df), 7), dtype=np.uint32)
     lectavg = np.zeros((len(df), 3), dtype=np.float32)
     qamat = np.zeros((len(df),6), dtype=np.float16)
+    nattmpt = np.zeros((len(df),5), dtype=np.float16)
     partsdict = defaultdict(lambda : {'acsu' : np.zeros(len(df), dtype=np.uint32),
                                       'cu' : np.zeros(len(df), dtype=np.uint32)})
     
@@ -107,6 +108,27 @@ def add_user_feats(df, pdicts, kdicts, update = True):
                     pdicts['lect_time_mat'][ukey, 6] = time_since #    pdicts['prev_lecture_time'][u] = time_since
                 if pdicts['lect_time_mat'][ukey, 5]>0: #if pdicts['cum_ques_since_lecture'][u]>0:
                     pdicts['lect_time_mat'][ukey, 5] += 1#    pdicts['cum_ques_since_lecture'][u] += 1
+        
+        '''
+        container_curr:0                            container_reattempt_count:2
+        container_reattempt_count_lag1:3            container_unq_ques_lag1:4
+        container_lag0:5    container_lag1:6        container_lag2:7
+        '''
+            
+        if (tcid + 1 == pdicts['container'][ukey, 0]) or (cid in pdicts['container_unq_ques'][u]):
+            if cid in pdicts['container_unq_ques'][u]:
+                pdicts['container'][ukey, 0] = tcid + 1
+            pdicts['container'][ukey, 2] += 1
+            pdicts['container_unq_ques'][u].add(cid)
+        else:
+            pdicts['container'][ukey, 3] = pdicts['container'][ukey, 2]
+            pdicts['container'][ukey, 4] = len(pdicts['container_unq_ques'][u])
+            pdicts['container'][ukey, 0] = tcid + 1
+            pdicts['container'][ukey, 2] = 1
+            pdicts['container_unq_ques'][u] = set([cid])
+            pdicts['container'][ukey, 7] = pdicts['container'][ukey, 6]
+            pdicts['container'][ukey, 6] = pdicts['container'][ukey, 5]
+            pdicts['container'][ukey, 5] = tstmp 
                     
         # 4 -> 6 -> 3 -> 2 -> 0 -> 1
         lectct[cnt] = pdicts['lect_time_mat'].item(ukey, 0), pdicts['lect_time_mat'].item(ukey, 1), \
@@ -124,9 +146,13 @@ def add_user_feats(df, pdicts, kdicts, update = True):
             decay_ratio = pdicts['decay'].item(ukey, 0) / (pdicts['decay'].item(ukey, 1) + 0.001)
             acsudec[cnt] = decay_ratio, \
                             decay_ratio - pdicts['user_id'].item(ukey, 0)/ (pdicts['user_id'].item(ukey, 1) + 0.001)
-                    
         
-        
+        nattmpt[cnt] = pdicts['container'][ukey, 2] / len(pdicts['container_unq_ques'][u]), \
+                            pdicts['container'][ukey, 3] / (pdicts['container'][ukey, 4] + 0.01), \
+                            tstmp  - pdicts['container'][ukey, 7], \
+                            tstmp  - pdicts['container'][ukey, 6], \
+                            tstmp  - pdicts['container'][ukey, 5]
+                            
         expacsu[cnt] = pdicts['user_id'].item(ukey, 2) # pdicts['pexp_answered_correctly_sum_u_dict'][u]
         expcu[cnt] = pdicts['user_id'].item(ukey, 3) # pdicts['pexp_count_u_dict'][u]
         pcu[cnt] =  pdicts['content_id'].item(ckey, 0) # pdicts['content_id_answered_correctly_prev'][u][cid] 
@@ -232,6 +258,7 @@ def add_user_feats(df, pdicts, kdicts, update = True):
     df[[f'rank_stats_{i}' for i in range(6)]] = qamat
     df[[f'rank_stats_{i}' for i in range(6)]] = df[[f'rank_stats_{i}' for i in range(6)]].astype(np.float32)
     df[[f'decayed_avg_correct{i}' for i in range(2)]] = acsudec
+    df[[f'nattempt_lag_{i}' for i in range(5)]] = nattmpt
     #df[['ctunique_sum', 'ctunique_attempt_ration']] = ctunq
     del cu, expcu, acsu, expacsu
     for t, i in enumerate(range(1,8)):  
@@ -393,6 +420,8 @@ pdicts = {
           'lect_time_cum': np.zeros((int(kdicts['userCtr'] *1.2) , 1), dtype= np.uint64),
           'rank': np.zeros((int(kdicts['userCtr'] *1.2) , 8), dtype= np.float16),
           'decay': np.zeros((int(kdicts['userCtr'] *1.2) , 2), dtype= np.float16),
+          'container': np.zeros((int(kdicts['userCtr'] *1.2) , 8), dtype= np.float16),
+          'container_unq_ques' : defaultdict(set),
           'qaRank' : qaRank,
           'qaRatio' : qaRatio,
           'qaRankFirst' : qaRankFirst, 
@@ -447,6 +476,7 @@ FEATS += [f'tag{i}' for i in range(6)]
 FEATS += [f'lecture_stats_{i}' for i in range(10)]
 FEATS += [f'rank_stats_{i}' for i in range(6)]
 FEATS += [f'rank_stats_diff_{i}' for i in range(2)]
+FEATS += [f'nattempt_lag_{i}' for i in range(5)]
 FEATS += [f'decayed_avg_correct{i}' for i in range(2)]
 
 y_tr = train[TARGET]
