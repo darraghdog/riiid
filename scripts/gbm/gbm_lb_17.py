@@ -296,7 +296,7 @@ def update_user_feats(df, pdicts, kdicts):
             
 
 CUT=0
-DIR='valfull'
+DIR='val'
 VERSION='V17'
 debug = False
 validaten_flg = False
