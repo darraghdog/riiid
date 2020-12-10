@@ -13,10 +13,26 @@ from collections import defaultdict
 from tqdm import tqdm
 import lightgbm as lgb
 import warnings
+import logging
 from scripts.utils import Iter_Valid, dumpobj, loadobj
 from sklearn.externals import joblib
 warnings.filterwarnings("ignore")
 pd.set_option('display.max_columns', None)
+
+def get_level(level_str):
+    ''' get level'''
+    l_names = {logging.getLevelName(lvl).lower(): lvl for lvl in [10, 20, 30, 40, 50]} # noqa
+    return l_names.get(level_str.lower(), logging.INFO)
+
+def get_logger(name, level_str):
+    ''' get logger'''
+    logger = logging.getLogger(name)
+    logger.setLevel(get_level(level_str))
+    handler = logging.StreamHandler()
+    handler.setLevel(level_str)
+    handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')) # pylint: disable=C0301 # noqa
+    logger.addHandler(handler)
+    return logger
 
 
 # user stats features with loops
@@ -347,6 +363,7 @@ VERSION='V19'
 debug = False
 validaten_flg = False
 runall = False
+logger = get_logger(f'GBM {VERSION}', 'INFO') 
 
 FILTCOLS = ['row_id', 'user_id', 'content_id', 'content_type_id',  \
                'answered_correctly', 'prior_question_elapsed_time', \
@@ -359,8 +376,8 @@ if runall:
     train = pd.concat([train, valid[:-keepval]], 0)
     valid = valid[-keepval:]
 
-print(f'Train shape {train.shape}')
-print(f'Valid shape {valid.shape}')
+logger.info(f'Train shape {train.shape}')
+logger.info(f'Valid shape {valid.shape}')
 
 if True:
     dumpobj(f'data/valfull/valid_{DIR}_{VERSION}.sav', valid) 
@@ -531,7 +548,7 @@ if True:
     del usercontentKeyMat#
     gc.collect()
     for k, v in kdicts.items():
-        print(f'Object {k} size {sys.getsizeof(v)}')
+        logger.info(f'Object {k} size {sys.getsizeof(v)}')
         try:
             joblib.dump(v, f'data/valfull/kdicts_{k}_{VERSION}_cut0_val.sav')  
         except:
@@ -581,8 +598,8 @@ for s,ii in enumerate([2,3,4,5,2,3,4,5]): # [4,5,6,4,5,6]
     y_pred = model.predict(valid[FEATS])
     dumpobj(f'data/valfull/cv1_{VERSION}_pred_bag{s}.pk', y_pred)  
     predls.append(y_pred)
-    print('auc:', roc_auc_score(y_va, y_pred))
-    print('Bagged auc:', roc_auc_score(y_va, sum(predls)  ))
+    logger.info(f'Round {ii} auc: {roc_auc_score(y_va, y_pred):.5f}')
+    logger.info(f'Round {ii} bagged auc: {roc_auc_score(y_va, sum(predls) ):.5f }')
 
 #### New 
 # Some container lag feature
