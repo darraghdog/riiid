@@ -4,7 +4,7 @@ import sys
 os.chdir('/data/riiid')
 sys.path.insert(0, '/data/riiid')
 #os.chdir('/Users/dhanley/Documents/riiid/')
-import sys
+import random
 import pandas as pd
 import numpy as np
 import gc
