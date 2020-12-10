@@ -342,11 +342,11 @@ def update_user_feats(df, pdicts, kdicts):
             
 
 CUT=0
-DIR='valfull'
-VERSION='V17'
+DIR='val'
+VERSION='V19'
 debug = False
 validaten_flg = False
-runall = True
+runall = False
 
 FILTCOLS = ['row_id', 'user_id', 'content_id', 'content_type_id',  \
                'answered_correctly', 'prior_question_elapsed_time', \
@@ -510,23 +510,9 @@ FEATS += [f'bundle_time_ratio{i}' for i in range(3)]
 FEATS += [f'decayed_avg_correct{i}' for i in range(2)]
 
 
-y_tr = train[TARGET]
-y_va = valid[TARGET]
-_=gc.collect()
-X_train_np = train[FEATS].values.astype(np.float32)
-X_valid_np = valid[FEATS].values.astype(np.float32)
-_=gc.collect()
-
-categoricals = ['part', 'content_id'] + [f'tag{i}' for i in range(6)]
-lgb_train = lgb.Dataset(X_train_np, y_tr, categorical_feature = categoricals, feature_name=FEATS)
-del X_train_np, y_tr
-_=gc.collect()
-lgb_valid = lgb.Dataset(X_valid_np, y_va, categorical_feature = categoricals, feature_name=FEATS)
-_=gc.collect()
-
 if True:
     joblib.dump(valid, f'data/valfull/cv1_{VERSION}_valid.pk')
-    del valid, train
+    # del valid, train
     gc.collect()
     dumpobj(f'data/valfull/cv1_{VERSION}_prior_question_elapsed_time_mean.pk', prior_question_elapsed_time_mean)
     dumpobj(f'data/valfull/cv1_{VERSION}_content_df.pk', content_df)
@@ -555,24 +541,48 @@ if True:
             gc.collect()
     del kdicts
     gc.collect()
-
-model = lgb.train(
-                    {'objective': 'binary', 
-                     'min_data_per_group':5000,
-                     'min_data_in_leaf' : 300,
-                     'learning_rate': 0.03},
-                    lgb_train,
-                    valid_sets=[lgb_train, lgb_valid],
-                    verbose_eval=100,
-                    num_boost_round=25000,
-                    early_stopping_rounds=25000, #100
-                )
-# print('auc:', roc_auc_score(y_va, model.predict(valid[FEATS])))
-_ = lgb.plot_importance(model)
-model.save_model(f'data/valfull/model_{VERSION}_valfull_cut0_val.pk')
-
-valid = joblib.load(f'data/valfull/cv1_{VERSION}_valid.pk')
-print('auc:', roc_auc_score(y_va, model.predict(valid[FEATS])))
+    
+predls = []
+for s,ii in enumerate([2,3,4,5,2,3,4,5]): # [4,5,6,4,5,6]
+    random.seed(s)
+    traintmp = train.groupby('user_id')\
+        .apply(lambda x: x.tail(x.shape[0] \
+                                - random.randint(0, x.shape[0]//ii)))
+    y_tr = traintmp[TARGET]
+    y_va = valid[TARGET]
+    _=gc.collect()
+    X_train_np = traintmp[FEATS].values.astype(np.float32)
+    X_valid_np = valid[FEATS].values.astype(np.float32)
+    _=gc.collect()
+    
+    categoricals = ['part', 'content_id'] + [f'tag{i}' for i in range(6)]
+    lgb_train = lgb.Dataset(X_train_np, y_tr, categorical_feature = categoricals, feature_name=FEATS)
+    del X_train_np, y_tr, traintmp
+    _=gc.collect()
+    lgb_valid = lgb.Dataset(X_valid_np, y_va, categorical_feature = categoricals, feature_name=FEATS)
+    _=gc.collect()
+        
+    
+    _=gc.collect()
+    model = lgb.train(
+                        {'objective': 'binary', 
+                         'min_data_per_group':5000,
+                         'min_data_in_leaf' : 300,
+                         'learning_rate': 0.1},
+                        lgb_train,
+                        valid_sets=[lgb_train, lgb_valid],
+                        verbose_eval=100,
+                        num_boost_round=25000,
+                        early_stopping_rounds=100, #100
+                    )
+    # print('auc:', roc_auc_score(y_va, model.predict(valid[FEATS])))
+    _ = lgb.plot_importance(model)
+    model.save_model(f'data/valfull/model_{VERSION}_bag{s}_valfull_cut0_val.pk')
+    y_pred = model.predict(valid[FEATS])
+    dumpobj(f'data/valfull/cv1_{VERSION}_pred_bag{s}.pk', y_pred)  
+    predls.append(y_pred)
+    print('auc:', roc_auc_score(y_va, y_pred))
+    print('Bagged auc:', roc_auc_score(y_va, sum(predls)  ))
 
 #### New 
 # Some container lag feature
