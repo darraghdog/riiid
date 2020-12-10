@@ -81,6 +81,7 @@ MODCOLS = ['content_id', 'content_type_id', 'prior_question_elapsed_time', \
             + [f'tag{i}' for i in range(6)]
 NOPAD = ['prior_question_elapsed_time', 'prior_question_had_explanation', \
              'timestamp', 'content_type_id']
+EMBCOLS = ['content_id', 'part', 'bundle_id'] + [f'tag{i}' for i in range(6)]
 
 PADVALS = train[MODCOLS].max(0) + 1
 PADVALS[NOPAD] = 0
@@ -140,11 +141,9 @@ class SAKTDataset(Dataset):
         
         return umat, target
 
-
 trndataset = SAKTDataset(train, MODCOLS, PADVALS)
 loaderargs = {'num_workers' : 16, 'batch_size' : 256}
 trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
-
 
 X.shape
 
@@ -153,9 +152,6 @@ for t, (X, y) in tqdm(enumerate(trnloader)):
     if t> 100000:
         break
     X,y
-    
-    
-X[MODCOLS
 
 embdims = OrderedDict([('content_id', 64), 
            ('part', 4), 
@@ -166,21 +162,21 @@ embmax = OrderedDict([('content_id', 13525),
            ('tag', 189), 
            ('bundle_id', 13522)] )
 padvals = train.max(0) + 1
-
 emb = dict((k, nn.Embedding(embmax[k]+1, dim)) for k,dim in embdims.items())
 
 
-embcols = ['content_id', 'part', 'bundle_id'] + [f'tag{i}' for i in range(6)]
-
-cols  =  [MODCOLS.index(c) for c in embcols]
-pads = [padvals[c] for c in embcols]
 
 u = 122681280
 usamp = trnmat[trnidx[u]]
 
 partidx = torch.from_numpy(usamp[:, cols].astype(np.int32)).long()
 
-emb['content_id'](partidx)
+
+[emb[c](X[:,:, MODCOLS.index(c)]) for c in ['content_id', 'part','bundle_id']]
+
+torch.cat((emb[c](X[:,:, MODCOLS.index(c)]) for c in ['content_id', 'part','bundle_id']), 2)
+
+.shape
 
 
 
