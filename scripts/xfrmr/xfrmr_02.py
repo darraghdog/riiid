@@ -71,6 +71,9 @@ valid[formatcols] = valid[formatcols].fillna(0).astype(np.int16)
 trnidx = train.reset_index().groupby(['user_id'])['index'].apply(list).to_dict()
 validx = valid.reset_index().groupby(['user_id'])['index'].apply(list).to_dict()
 
+train.reset_index()[['user_id', 'index']].values
+
+
 MODCOLS = ['content_id', 'content_type_id', 'prior_question_elapsed_time', \
            'prior_question_had_explanation', 'task_container_id', \
             'timestamp', 'part', 'bundle_id', \
@@ -83,6 +86,7 @@ PADVALS = train[MODCOLS].max(0) + 1
 PADVALS[NOPAD] = 0
 
 
+self = SAKTDataset(train, MODCOLS, PADVALS)
 
 class SAKTDataset(Dataset):
     def __init__(self, data, cols, padvals, 
@@ -94,6 +98,7 @@ class SAKTDataset(Dataset):
         self.padvals = padvals
         self.uidx = self.data.reset_index()\
             .groupby(['user_id'])['index'].apply(list).to_dict()
+        self.quidx = self.data.reset_index()[['user_id', 'index']].values
         self.dfmat = self.data[self.cols].values
         self.padmat = self.padvals[self.cols].values
         self.users = self.data.user_id.unique() 
@@ -105,13 +110,18 @@ class SAKTDataset(Dataset):
     
     def __len__(self):
         
-        return len(self.users)
+        return len(self.quidx)
     
     def __getitem__(self, idx):
         
-        u = self.users[idx]
+        # Get index of user and question
+        u,q = self.quidx[idx]
+        # Pull out ths user index sequence
         useqidx = self.uidx[u]
-        umat = self.dfmat[useqidx]
+        # Pull out position of question
+        cappos  = useqidx.index(q)
+        # Pull out the sequence of questions up to that question
+        umat = self.dfmat[useqidx[:cappos]]
         
         if umat.shape[0] >= self.maxseq:
             umat = umat[:self.maxseq]
@@ -132,13 +142,20 @@ class SAKTDataset(Dataset):
 
 
 trndataset = SAKTDataset(train, MODCOLS, PADVALS)
+loaderargs = {'num_workers' : 16, 'batch_size' : 256}
+trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
 
 
-for t, (X, y) in tqdm(enumerate(trndataset)):
-    if t> 1000000:
+X.shape
+
+
+for t, (X, y) in tqdm(enumerate(trnloader)):
+    if t> 100000:
         break
-
-
+    X,y
+    
+    
+X[MODCOLS
 
 embdims = OrderedDict([('content_id', 64), 
            ('part', 4), 
