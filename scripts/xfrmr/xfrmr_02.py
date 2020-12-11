@@ -82,12 +82,13 @@ MODCOLS = ['content_id', 'content_type_id', 'prior_question_elapsed_time', \
 NOPAD = ['prior_question_elapsed_time', 'prior_question_had_explanation', \
              'timestamp', 'content_type_id']
 EMBCOLS = ['content_id', 'part', 'bundle_id'] + [f'tag{i}' for i in range(6)]
-
+TARGETCOLS = [ 'user_answer', 'answered_correctly', 'correct_answer']
+CONTCOLS = ['timestamp', 'prior_question_elapsed_time', 'prior_question_had_explanation']
 PADVALS = train[MODCOLS].max(0) + 1
 PADVALS[NOPAD] = 0
 
 
-self = SAKTDataset(train, MODCOLS, PADVALS)
+#self = SAKTDataset(train, MODCOLS, PADVALS)
 
 class SAKTDataset(Dataset):
     def __init__(self, data, cols, padvals, 
@@ -108,6 +109,7 @@ class SAKTDataset(Dataset):
         self.targetidx =  [self.cols.index(c) for c in \
                            ['answered_correctly', 'user_answer', 'correct_answer']]
         self.padtarget = np.array([self.padvals[self.targetidx].tolist()])
+        self.timecols = [self.cols.index(c) for c in ['timestamp','prior_question_elapsed_time']]
     
     def __len__(self):
         
@@ -130,6 +132,13 @@ class SAKTDataset(Dataset):
             padlen = self.maxseq - umat.shape[0] 
             upadmat = np.tile(self.padmat, (padlen, 1))
             umat = np.concatenate((upadmat, umat), 0)
+            
+        # convert time to lag
+        umat[:, self.timecols[0]][1:] = umat[:, self.timecols[0]][1:] - umat[:, self.timecols[0]][:-1]
+        umat[:, self.timecols[0]][0] = 0
+        
+        # preprocess continuous time - try log scale
+        umat[self.timecols] = np.log( 1.+ umat[self.timecols] / 1000 )
         
         if self.has_target:
             target = umat[-1, self.targetidx ]
@@ -141,42 +150,43 @@ class SAKTDataset(Dataset):
         
         return umat, target
 
+# Should we be stepping; all 0's first, then all 1's, then all 2,s 
 trndataset = SAKTDataset(train, MODCOLS, PADVALS)
 loaderargs = {'num_workers' : 16, 'batch_size' : 256}
 trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
 
-X.shape
 
 
 for t, (X, y) in tqdm(enumerate(trnloader)):
-    if t> 100000:
+    if t> 100:
         break
-    X,y
+    
+    
 
-embdims = OrderedDict([('content_id', 64), 
+embdims = OrderedDict([('content_id', 32), 
            ('part', 4), 
            ('tag', 16), 
-           ('bundle_id', 64)] )
+           ('bundle_id', 32)] )
 embmax = OrderedDict([('content_id', 13525), 
            ('part', 9), 
            ('tag', 189), 
-           ('bundle_id', 13522)] )
+           ('bundle_id', 13525)] )
 padvals = train.max(0) + 1
 emb = dict((k, nn.Embedding(embmax[k]+1, dim)) for k,dim in embdims.items())
+tag_idx = ['tag' in i for i in MODCOLS]
+tag_wts = torch.ones((sum(tag_idx), 16), requires_grad=True) 
+cont_idx = [MODCOLS.index(c) for c in CONTCOLS]
+
+# Categorical embeddings
+EMBCOLS1 = ['content_id', 'part'] #,'bundle_id']
+embcat = torch.cat([emb[c](X[:,:, MODCOLS.index(c)]) for c in EMBCOLS1 ], 2)
+embtag = (emb['tag'](X[:,:, tag_idx]) * tag_wts).sum(2)
+contmat  = X[:,:, cont_idx]
+# Weighted sum of tags - hopefully good weights are learnt
+x = torch.cat([embcat, embtag, contmat], 2)
 
 
 
-u = 122681280
-usamp = trnmat[trnidx[u]]
-
-partidx = torch.from_numpy(usamp[:, cols].astype(np.int32)).long()
-
-
-[emb[c](X[:,:, MODCOLS.index(c)]) for c in ['content_id', 'part','bundle_id']]
-
-torch.cat((emb[c](X[:,:, MODCOLS.index(c)]) for c in ['content_id', 'part','bundle_id']), 2)
-
-.shape
 
 
 
