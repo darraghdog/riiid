@@ -1,7 +1,9 @@
 # https://www.kaggle.com/bminixhofer/speed-up-your-rnn-with-sequence-bucketing
 # https://www.kaggle.com/its7171/lgbm-with-loop-feature-engineering/#data
 import os
-os.chdir('/Users/dhanley/Documents/riiid/')
+PATH = '/Users/dhanley/Documents/riiid/' \
+    if platform.system() == 'Darwin' else '/home/dhanley/riiid'
+os.chdir(PATH)
 import sys
 import pandas as pd
 import numpy as np
@@ -15,17 +17,27 @@ from scipy import sparse
 from scripts.utils import Iter_Valid, dumpobj, loadobj
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.decomposition import LatentDirichletAllocation as LDA
+import platform
 import torch
 import torch.nn as nn
 import torch.nn.utils.rnn as rnn_utils
 from torch.autograd import Variable
 from torch.utils.data import Dataset, DataLoader
+from torch.nn import functional as F
+from torch.cuda.amp import autocast
+from sklearn.metrics import log_loss
+from tools.utils import get_logger, SpatialDropout, split_tags
+from tools.config import load_config
+
+
 warnings.filterwarnings("ignore")
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows',1000)
-
 pd.set_option('display.width', 1000)
 
+logger = get_logger('Train', 'INFO')
+
+device = 'cpu' if platform.system() == 'Darwin' else 'cuda'
 CUT=0
 DIR='val'
 VERSION='V1'
@@ -36,6 +48,8 @@ FILTCOLS = ['row_id', 'user_id', 'content_id', 'content_type_id',  \
                'answered_correctly', 'prior_question_elapsed_time', \
                    'prior_question_had_explanation', 'task_container_id', \
                        'timestamp', 'user_answer']
+logger.info(f'Loaded columns {FILTCOLS}')
+
 valid = pd.read_feather(f'data/{DIR}/cv{CUT+1}_valid.feather')[FILTCOLS].head(10000)
 train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS].head(10**6)
 gc.collect()
@@ -54,9 +68,6 @@ train = train.loc[train.content_type_id == False].reset_index(drop=True)
 valid = valid.loc[valid.content_type_id == False].reset_index(drop=True)
 
 # Joins questions
-def split_tags(x) : 
-    if x == '': return [188]*6
-    return list(map(int, x.split(' ')))+[188]*(6-len(x.split(' '))) 
 qdf = pd.read_csv('data/questions.csv')
 qdf[[f'tag{i}' for i in range(6)]] =  qdf.tags.fillna('').apply(split_tags).tolist()
 
@@ -87,7 +98,6 @@ CONTCOLS = ['timestamp', 'prior_question_elapsed_time', 'prior_question_had_expl
 PADVALS = train[MODCOLS].max(0) + 1
 PADVALS[NOPAD] = 0
 
-
 #self = SAKTDataset(train, MODCOLS, PADVALS)
 
 class SAKTDataset(Dataset):
@@ -109,6 +119,7 @@ class SAKTDataset(Dataset):
         self.targetidx =  [self.cols.index(c) for c in \
                            ['answered_correctly', 'user_answer', 'correct_answer']]
         self.padtarget = np.array([self.padvals[self.targetidx].tolist()])
+        self.yidx = self.cols.index('answered_correctly') 
         self.timecols = [self.cols.index(c) for c in ['timestamp','prior_question_elapsed_time']]
     
     def __len__(self):
@@ -124,7 +135,7 @@ class SAKTDataset(Dataset):
         # Pull out position of question
         cappos  = useqidx.index(q)
         # Pull out the sequence of questions up to that question
-        umat = self.dfmat[useqidx[:cappos]]
+        umat = self.dfmat[useqidx[:cappos]].astype(np.float32)
         
         if umat.shape[0] >= self.maxseq:
             umat = umat[:self.maxseq]
@@ -137,53 +148,159 @@ class SAKTDataset(Dataset):
         umat[:, self.timecols[0]][1:] = umat[:, self.timecols[0]][1:] - umat[:, self.timecols[0]][:-1]
         umat[:, self.timecols[0]][0] = 0
         
-        # preprocess continuous time - try log scale
-        umat[self.timecols] = np.log( 1.+ umat[self.timecols] / 1000 )
+        # preprocess continuous time - try log scale and roughly center it
+        umat[:, self.timecols] = np.log( 1.+ umat[:, self.timecols] / (1000) ) - 3
         
         if self.has_target:
-            target = umat[-1, self.targetidx ]
+            target = umat[-1, self.yidx ]
             umat[:, self.targetidx] = np.concatenate((self.padtarget, \
                                                       umat[:-1, self.targetidx]), 0)
         
-        umat = torch.tensor(umat).long()
+        umat = torch.tensor(umat).float()
         target = torch.tensor(target)
         
         return umat, target
+    
+class LearnNet(nn.Module):
+    def __init__(self, modcols, contcols, padvals, 
+                 LSTM_UNITS = 128):
+        super(LearnNet, self).__init__()
+        
+        self.padvals = padvals
+        self.modcols = modcols
+        self.contcols = contcols
+        self.embcols = ['content_id', 'part']
+        
+        self.emb_content_id = nn.Embedding(13526, 32)
+        self.emb_part = nn.Embedding(9, 4)
+        self.emb_tag= nn.Embedding(190, 16)
+            
+        self.tag_idx = ['tag' in i for i in self.modcols]
+        self.tag_wts = torch.ones((sum(self.tag_idx), 16), requires_grad=True) 
+        self.cont_idx = [self.modcols.index(c) for c in contcols]
+        
+        self.embedding_dropout = SpatialDropout(0.3)
+        
+        in_dim = 32 + 4 + 16 + len(contcols)
+        
+        self.lstm1 = nn.LSTM(in_dim, LSTM_UNITS, bidirectional=False, batch_first=True)
+        self.lstm2 = nn.LSTM(LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
+    
+        self.linear1 = nn.Linear(LSTM_UNITS*2, LSTM_UNITS)
+        self.linear2 = nn.Linear(LSTM_UNITS*2, LSTM_UNITS)
+        
+        self.linear_out = nn.Linear(LSTM_UNITS, 1)
+        
+    def forward(self, x):
+        
+        # Categroical embeddings
+        embcat = torch.cat([
+            self.emb_content_id(x[:,:, self.modcols.index('content_id')].long()),
+            self.emb_part(x[:,:, self.modcols.index('part')].long()), 
+            (self.emb_tag(x[:,:, self.tag_idx].long()) * self.tag_wts).sum(2)
+            ], 2)
+        embcat = self.embedding_dropout(embcat)
+        
+        # Continuous
+        contmat  = x[:,:, self.cont_idx]
+        # Weighted sum of tags - hopefully good weights are learnt
+        xinp = torch.cat([embcat, contmat], 2)
+        
+        h_lstm1, _ = self.lstm1(xinp)
+        h_lstm2, _ = self.lstm2(h_lstm1)
+        
+        # Take last hidden unit
+        h_conc = torch.cat((h_lstm1[:, -1, :], h_lstm2[:, -1, :]), 1)
+        h_conc_linear1  = F.relu(self.linear1(h_conc))
+        h_conc_linear2  = F.relu(self.linear2(h_conc))
+        
+        hidden = h_lstm1[:, -1, :] + h_lstm2[:, -1, :] + h_conc_linear1 + h_conc_linear2
+        
+        out = self.linear_out(hidden).flatten()
+        
+        return out
 
+logger.info('Create model and loaders')
+model = self =  LearnNet(MODCOLS, CONTCOLS, PADVALS)
+    
+
+LR = 0.0001
+DECAY = 0.0
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
 trndataset = SAKTDataset(train, MODCOLS, PADVALS)
+valdataset = SAKTDataset(valid, MODCOLS, PADVALS)
 loaderargs = {'num_workers' : 16, 'batch_size' : 256}
 trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
+valloader = DataLoader(trndataset, shuffle=False, **loaderargs)
+
+criterion =  F.binary_cross_entropy_with_logits
+plist = list(model.named_parameters())
+no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
+plist = [
+    {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay': DECAY},
+    {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
+    ]
+
+optimizer = torch.optim.Adam(plist, lr=LR)
 
 
+if device != 'cpu':
+    scaler = torch.cuda.amp.GradScaler()
 
-for t, (X, y) in tqdm(enumerate(trnloader)):
-    if t> 100:
-        break
+
+logger.info('Start training')
+best_val_loss = 100.
+for epoch in range(50):
+    for param in model.parameters():
+        param.requires_grad = True
+    model.train()  
+    pbartrn = tqdm(enumerate(trnloader), 
+                total = len(trndataset)//loaderargs['batch_size'], 
+                desc=f"Train epoch {epoch}", ncols=0)
+    trn_loss = 0.
+    for step, batch in pbartrn:
+        x, y = batch
+        x = x.to(device, dtype=torch.float)
+        x = torch.autograd.Variable(x, requires_grad=True)
+        y = torch.autograd.Variable(y)
+        
+        with autocast():
+            out = model(x)
+        loss = criterion(out, y)
+        
+        if device != 'cpu':
+            scaler.scale(loss).backward()
+            if (i % args.accum) == 0:
+                scaler.step(optimizer)
+                scaler.update()
+                optimizer.zero_grad()
+        else:
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+        
+        
+        trn_loss += loss.item()
+        pbartrn.set_postfix({'train loss': trn_loss / (step + 1) })
     
-    
+    pbarval = tqdm(enumerate(valloader), 
+                total = len(valdataset)//loaderargs['batch_size'], 
+                desc=f"Valid epoch {epoch}", ncols=0)
+    y_predls = []
+    y_act = valid['answered_correctly'].values
+    for step, batch in pbarval:
+        x, y = batch
+        x = x.to(device, dtype=torch.float)
+        with torch.no_grad():
+            out = model(x)
+        y_predls.append(out.detach().cpu().numpy())
+        
+    y_pred = np.concatenate(y_predls)
+    auc_score = roc_auc_score(y_act, y_pred )
+    logger.info(f'Valid AUC Score {auc_score:.5f}')
 
-embdims = OrderedDict([('content_id', 32), 
-           ('part', 4), 
-           ('tag', 16), 
-           ('bundle_id', 32)] )
-embmax = OrderedDict([('content_id', 13525), 
-           ('part', 9), 
-           ('tag', 189), 
-           ('bundle_id', 13525)] )
-padvals = train.max(0) + 1
-emb = dict((k, nn.Embedding(embmax[k]+1, dim)) for k,dim in embdims.items())
-tag_idx = ['tag' in i for i in MODCOLS]
-tag_wts = torch.ones((sum(tag_idx), 16), requires_grad=True) 
-cont_idx = [MODCOLS.index(c) for c in CONTCOLS]
 
-# Categorical embeddings
-EMBCOLS1 = ['content_id', 'part'] #,'bundle_id']
-embcat = torch.cat([emb[c](X[:,:, MODCOLS.index(c)]) for c in EMBCOLS1 ], 2)
-embtag = (emb['tag'](X[:,:, tag_idx]) * tag_wts).sum(2)
-contmat  = X[:,:, cont_idx]
-# Weighted sum of tags - hopefully good weights are learnt
-x = torch.cat([embcat, embtag, contmat], 2)
+
 
 
 
