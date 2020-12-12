@@ -240,12 +240,12 @@ logger.info('Create model and loaders')
 model = self =  LearnNet(MODCOLS, CONTCOLS, PADVALS, EXTRACOLS)
 model.to(device)
 
-LR = 0.000001
+LR = 0.00001
 DECAY = 0.0
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
 trndataset = SAKTDataset(train, MODCOLS, PADVALS, EXTRACOLS)
 valdataset = SAKTDataset(valid, MODCOLS, PADVALS, EXTRACOLS)
-loaderargs = {'num_workers' : 64, 'batch_size' : 256}
+loaderargs = {'num_workers' : 16, 'batch_size' : 256}
 trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
 valloader = DataLoader(valdataset, shuffle=False, **loaderargs)
 # x, y = next(iter(trnloader))
@@ -254,11 +254,7 @@ criterion =  nn.BCEWithLogitsLoss()
 
 param_optimizer = list(model.named_parameters())
 no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
-plist = [
-    {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay': DECAY},
-    {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
-    ]
-
+plist = [ {'params': [p for n, p in param_optimizer] } ]
 optimizer = torch.optim.Adam(plist, lr=LR)
 
 
