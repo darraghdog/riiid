@@ -221,14 +221,15 @@ class LearnNet(nn.Module):
         xinp = embcat
         
         h_lstm1, _ = self.lstm1(xinp)
-        h_lstm2, _ = self.lstm2(h_lstm1)
+        #h_lstm2, _ = self.lstm2(h_lstm1)
         
         # Take last hidden unit
-        h_conc = torch.cat((h_lstm1[:, -1, :], h_lstm2[:, -1, :]), 1)
-        h_conc_linear1  = F.relu(self.linear1(h_conc))
-        h_conc_linear2  = F.relu(self.linear2(h_conc))
+        #h_conc = torch.cat((h_lstm1[:, -1, :], h_lstm2[:, -1, :]), 1)
+        #h_conc_linear1  = F.relu(self.linear1(h_conc))
+        #h_conc_linear2  = F.relu(self.linear2(h_conc))
+        hidden  = F.relu(self.linear1(h_lstm1[:, 0, :]))
         
-        hidden = h_conc_linear1 + h_conc_linear2
+        #hidden = h_conc_linear1 + h_conc_linear2
         
         out = self.linear_out(hidden).flatten()
         
