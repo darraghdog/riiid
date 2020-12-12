@@ -182,7 +182,7 @@ class SAKTDataset(Dataset):
     
 class LearnNet(nn.Module):
     def __init__(self, modcols, contcols, padvals, extracols, 
-                 LSTM_UNITS = 128, device = device, dropout = 0.2):
+                 device = device, dropout = 0.2):
         super(LearnNet, self).__init__()
         
         self.dropout = nn.Dropout(dropout)
@@ -193,7 +193,7 @@ class LearnNet(nn.Module):
         self.contcols = contcols
         self.embcols = ['content_id', 'part']
         
-        self.emb_content_id = nn.Embedding(13526, 64)
+        self.emb_content_id = nn.Embedding(13526, 32)
         self.emb_part = nn.Embedding(9, 4)
         self.emb_tag= nn.Embedding(190, 16)
         self.emb_lag_time = nn.Embedding(301, 16)
@@ -208,16 +208,13 @@ class LearnNet(nn.Module):
         
         self.embedding_dropout = SpatialDropout(dropout)
         
-        in_dim = 64 + 4 + 16 * 3 # + len(self.contcols)
+        LSTM_UNITS = 32 + 4 + 16 * 3 # + len(self.contcols)
         
-        self.lstm1 = nn.LSTM(in_dim, LSTM_UNITS, bidirectional=False, batch_first=True)
-        self.lstm2 = nn.LSTM(LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
+        self.lstm1 = nn.LSTM(LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
     
-        self.linear1 = nn.Linear(LSTM_UNITS*2, LSTM_UNITS)
-        self.linear2 = nn.Linear(LSTM_UNITS*2, LSTM_UNITS)
-        # self.linear1 = nn.Linear(LSTM_UNITS, LSTM_UNITS)
+        self.linear1 = nn.Linear(LSTM_UNITS, LSTM_UNITS//2)
         
-        self.linear_out = nn.Linear(LSTM_UNITS, 1)
+        self.linear_out = nn.Linear(LSTM_UNITS//2, 1)
         
     def forward(self, x):
         
@@ -238,25 +235,10 @@ class LearnNet(nn.Module):
         xinp = embcat
         
         h_lstm1, _ = self.lstm1(xinp)
-        h_lstm2, _ = self.lstm2(h_lstm1)
-        
-        '''
-        # global average pooling
-        avg_pool = torch.mean(h_lstm1, 1)
-        # global max pooling
-        max_pool, _ = torch.max(h_lstm1, 1)
-        
-        h_conc = torch.cat((max_pool, avg_pool), 1)
-        '''
         # Take last hidden unit
-        h_conc = torch.cat((h_lstm1[:, -1, :], h_lstm2[:, -1, :]), 1)
-        h_conc_linear1  = F.relu(self.linear1(h_conc))
-        #hidden = self.dropout(h_conc_linear1)
-        h_conc_linear2  = F.relu(self.linear2(h_conc))
-        #hidden  = F.relu(self.linear1(h_conc))
-        
-        hidden = h_conc_linear1 + h_conc_linear2
-        
+        hidden = self.dropout(h_lstm1)
+        hidden  = F.relu(self.linear1(hidden))
+        hidden = self.dropout(hidden)
         out = self.linear_out(hidden).flatten()
         
         return out
