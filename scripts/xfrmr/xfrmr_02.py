@@ -99,15 +99,16 @@ TARGETCOLS = [ 'user_answer', 'answered_correctly', 'correct_answer']
 CONTCOLS = ['timestamp', 'prior_question_elapsed_time', 'prior_question_had_explanation']
 PADVALS = train[MODCOLS].max(0) + 1
 PADVALS[NOPAD] = 0
-
+EXTRACOLS = ['lag_time_cat', 'elapsed_time_cat']
 #self = SAKTDataset(train, MODCOLS, PADVALS)
 
 class SAKTDataset(Dataset):
-    def __init__(self, data, cols, padvals, 
+    def __init__(self, data, cols, padvals, extracols, 
                  maxseq = 100, has_target = True): 
         super(SAKTDataset, self).__init__()
         
         self.cols = cols
+        self.extracols = extracols
         self.data = data
         self.padvals = padvals
         self.uidx = self.data.reset_index()\
@@ -150,8 +151,12 @@ class SAKTDataset(Dataset):
         umat[:, self.timecols[0]][1:] = umat[:, self.timecols[0]][1:] - umat[:, self.timecols[0]][:-1]
         umat[:, self.timecols[0]][0] = 0
         
+        # Time embeddings
+        timeemb = (umat[:, self.timecols] / 1000).clip(0, 300).astype(np.int16)
+        umat = np.concatenate((umat, timeemb), 1)
+        
         # preprocess continuous time - try log scale and roughly center it
-        umat[:, self.timecols] = np.log( 1.+ umat[:, self.timecols] / (1000) ) - 3
+        umat[:, self.timecols] = np.log10( 1.+ umat[:, self.timecols] / (60 * 1000) ) 
         
         if self.has_target:
             target = umat[-1, self.yidx ]
@@ -164,26 +169,30 @@ class SAKTDataset(Dataset):
         return umat, target
     
 class LearnNet(nn.Module):
-    def __init__(self, modcols, contcols, padvals, 
+    def __init__(self, modcols, contcols, padvals, extracols, 
                  LSTM_UNITS = 128, device = device):
         super(LearnNet, self).__init__()
         
         self.padvals = padvals
-        self.modcols = modcols
+        self.extracols = extracols
+        self.modcols = modcols + extracols
         self.contcols = contcols
         self.embcols = ['content_id', 'part']
         
         self.emb_content_id = nn.Embedding(13526, 32)
         self.emb_part = nn.Embedding(9, 4)
         self.emb_tag= nn.Embedding(190, 16)
+        self.emb_lag_time = nn.Embedding(301, 16)
+        self.emb_elapsed_time = nn.Embedding(301, 16)
             
         self.tag_idx = torch.tensor(['tag' in i for i in self.modcols]).to(device)
         self.tag_wts = torch.ones((sum(self.tag_idx), 16), requires_grad=True).to(device)
+        self.tag_wts = self.tag_wts / self.tag_wts.shape[0]
         self.cont_idx = [self.modcols.index(c) for c in self.contcols]
         
         self.embedding_dropout = SpatialDropout(0.3)
         
-        in_dim = 32 + 4 + 16 + len(self.contcols)
+        in_dim = 32 + 4 + 16 * 3 #+ len(self.contcols)
         
         self.lstm1 = nn.LSTM(in_dim, LSTM_UNITS, bidirectional=False, batch_first=True)
         self.lstm2 = nn.LSTM(LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
@@ -199,14 +208,17 @@ class LearnNet(nn.Module):
         embcat = torch.cat([
             self.emb_content_id(x[:,:, self.modcols.index('content_id')].long()),
             self.emb_part(x[:,:, self.modcols.index('part')].long()), 
-            (self.emb_tag(x[:,:, self.tag_idx].long()) * self.tag_wts).sum(2)
+            (self.emb_tag(x[:,:, self.tag_idx].long()) * self.tag_wts).sum(2),
+            self.emb_lag_time(x[:,:, self.modcols.index('lag_time_cat')].long()), 
+            self.emb_elapsed_time(x[:,:, self.modcols.index('elapsed_time_cat')].long())
             ], 2)
         embcat = self.embedding_dropout(embcat)
         
-        # Continuous
-        contmat  = x[:,:, self.cont_idx]
+        ## Continuous
+        #contmat  = x[:,:, self.cont_idx]
         # Weighted sum of tags - hopefully good weights are learnt
-        xinp = torch.cat([embcat, contmat], 2)
+        #xinp = torch.cat([embcat, contmat], 2)
+        xinp = embcat
         
         h_lstm1, _ = self.lstm1(xinp)
         h_lstm2, _ = self.lstm2(h_lstm1)
@@ -223,18 +235,28 @@ class LearnNet(nn.Module):
         return out
 
 logger.info('Create model and loaders')
-model = self =  LearnNet(MODCOLS, CONTCOLS, PADVALS)
+model = self =  LearnNet(MODCOLS, CONTCOLS, PADVALS, EXTRACOLS)
 model.to(device)
 
 LR = 0.0001
 DECAY = 0.0
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
-trndataset = SAKTDataset(train, MODCOLS, PADVALS)
-valdataset = SAKTDataset(valid, MODCOLS, PADVALS)
-loaderargs = {'num_workers' : 16, 'batch_size' : 256}
+trndataset = SAKTDataset(train, MODCOLS, PADVALS, EXTRACOLS)
+valdataset = SAKTDataset(valid, MODCOLS, PADVALS, EXTRACOLS)
+loaderargs = {'num_workers' : 16, 'batch_size' : 256*32}
 trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
 valloader = DataLoader(trndataset, shuffle=False, **loaderargs)
 # x, y = next(iter(trnloader))
+
+x[:,:, model.cont_idx]
+
+from torchvision import transforms
+transform = transforms.Compose([
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                         std=[0.229, 0.224, 0.225])
+])
+x[:,:,trndataset.timecols].std()
+
 
 criterion =  nn.BCEWithLogitsLoss()
 
@@ -272,7 +294,7 @@ for epoch in range(50):
         with autocast():
             out = model(x)
         loss = criterion(out, y)
-        
+        if step % 100: logger.info(model.tag_wts)
         if device != 'cpu':
             scaler.scale(loss).backward()
             scaler.step(optimizer)
