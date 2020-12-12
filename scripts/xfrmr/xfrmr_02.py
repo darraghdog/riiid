@@ -165,7 +165,7 @@ class SAKTDataset(Dataset):
     
 class LearnNet(nn.Module):
     def __init__(self, modcols, contcols, padvals, 
-                 LSTM_UNITS = 128):
+                 LSTM_UNITS = 128, device = device):
         super(LearnNet, self).__init__()
         
         self.padvals = padvals
@@ -177,8 +177,8 @@ class LearnNet(nn.Module):
         self.emb_part = nn.Embedding(9, 4)
         self.emb_tag= nn.Embedding(190, 16)
             
-        self.tag_idx = ['tag' in i for i in self.modcols]
-        self.tag_wts = torch.ones((sum(self.tag_idx), 16), requires_grad=True) 
+        self.tag_idx = torch.tensor(['tag' in i for i in self.modcols]).to(device)
+        self.tag_wts = torch.ones((sum(self.tag_idx), 16), requires_grad=True).to(device)
         self.cont_idx = [self.modcols.index(c) for c in contcols]
         
         self.embedding_dropout = SpatialDropout(0.3)
@@ -224,7 +224,7 @@ class LearnNet(nn.Module):
 
 logger.info('Create model and loaders')
 model = self =  LearnNet(MODCOLS, CONTCOLS, PADVALS)
-    
+model.to(device)
 
 LR = 0.0001
 DECAY = 0.0
@@ -236,7 +236,7 @@ trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
 valloader = DataLoader(trndataset, shuffle=False, **loaderargs)
 
 criterion =  F.binary_cross_entropy_with_logits
-plist = list(model.named_parameters())
+param_optimizer = list(model.named_parameters())
 no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
 plist = [
     {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay': DECAY},
@@ -263,6 +263,7 @@ for epoch in range(50):
     for step, batch in pbartrn:
         x, y = batch
         x = x.to(device, dtype=torch.float)
+        y = y.to(device, dtype=torch.float)
         x = torch.autograd.Variable(x, requires_grad=True)
         y = torch.autograd.Variable(y)
         
@@ -272,10 +273,9 @@ for epoch in range(50):
         
         if device != 'cpu':
             scaler.scale(loss).backward()
-            if (i % args.accum) == 0:
-                scaler.step(optimizer)
-                scaler.update()
-                optimizer.zero_grad()
+            scaler.step(optimizer)
+            scaler.update()
+            optimizer.zero_grad()
         else:
             loss.backward()
             optimizer.step()
