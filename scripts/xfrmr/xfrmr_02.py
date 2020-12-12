@@ -295,10 +295,15 @@ for epoch in range(50):
         y = y.to(device, dtype=torch.float)
         x = torch.autograd.Variable(x, requires_grad=True)
         y = torch.autograd.Variable(y)
-
+        
+        out = model(x)
+        loss = criterion(out, y)
+        loss.backward()
+        optimizer.step()
+        '''
         with autocast():
             out = model(x)
-            loss = criterion(y, out)
+            loss = criterion(out, y)
         if device != 'cpu':
             scaler.scale(loss).backward()
             scaler.step(optimizer)
@@ -307,6 +312,7 @@ for epoch in range(50):
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()
+        '''
         
         
         trn_loss += loss.item()
