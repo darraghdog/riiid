@@ -80,6 +80,10 @@ formatcols =  ['question_id', 'part', 'bundle_id', 'correct_answer', 'user_answe
 train[formatcols] = train[formatcols].fillna(0).astype(np.int16)
 valid[formatcols] = valid[formatcols].fillna(0).astype(np.int16)
 
+train['content_user_answer']  = train['user_answer'] + 4 * train['content_id'].astype(np.int32)
+valid['content_user_answer']  = valid['user_answer'] + 4 * valid['content_id'].astype(np.int32)
+
+
 # Create index for loader
 trnidx = train.reset_index().groupby(['user_id'])['index'].apply(list).to_dict()
 validx = valid.reset_index().groupby(['user_id'])['index'].apply(list).to_dict()
@@ -90,7 +94,7 @@ train.reset_index()[['user_id', 'index']].values
 MODCOLS = ['content_id', 'content_type_id', 'prior_question_elapsed_time', \
            'prior_question_had_explanation', 'task_container_id', \
             'timestamp', 'part', 'bundle_id', \
-                'answered_correctly', 'user_answer', 'correct_answer'] \
+                'answered_correctly', 'user_answer', 'correct_answer', 'content_user_answer'] \
             + [f'tag{i}' for i in range(6)]
 NOPAD = ['prior_question_elapsed_time', 'prior_question_had_explanation', \
              'timestamp', 'content_type_id']
@@ -194,10 +198,12 @@ class LearnNet(nn.Module):
         self.embcols = ['content_id', 'part']
         
         self.emb_content_id = nn.Embedding(13526, 32)
+        self.emb_bundle_id = nn.Embedding(13526, 32)
         self.emb_part = nn.Embedding(9, 4)
         self.emb_tag= nn.Embedding(190, 16)
         self.emb_lag_time = nn.Embedding(301, 16)
         self.emb_elapsed_time = nn.Embedding(301, 16)
+        self.emb_cont_user_answer = nn.Embedding(13526 * 4, 4)
             
         self.tag_idx = torch.tensor(['tag' in i for i in self.modcols])
         self.tag_wts = torch.ones((sum(self.tag_idx), 16))  / sum(self.tag_idx)
@@ -208,7 +214,7 @@ class LearnNet(nn.Module):
         
         self.embedding_dropout = SpatialDropout(dropout)
         
-        LSTM_UNITS = 32 + 4 + 16 * 3 + len(self.contcols)
+        LSTM_UNITS = 32 + 32 + 4 + 16 * 3 + 4 + len(self.contcols)
         
         self.lstm1 = nn.LSTM(LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
         self.linear1 = nn.Linear(LSTM_UNITS, LSTM_UNITS//2)
@@ -223,6 +229,8 @@ class LearnNet(nn.Module):
         # Categroical embeddings
         embcat = torch.cat([
             self.emb_content_id(x[:,:, self.modcols.index('content_id')].long()),
+            self.emb_bundle_id(x[:,:, self.modcols.index('bundle_id')].long()),
+            self.emb_cont_user_answer(x[:,:, self.modcols.index('content_user_answer')].long()),
             self.emb_part(x[:,:, self.modcols.index('part')].long()), 
             (self.emb_tag(x[:,:, self.tag_idx].long()) * self.tag_wts).sum(2),
             self.emb_lag_time(x[:,:, self.modcols.index('lag_time_cat')].long()), 
@@ -253,7 +261,7 @@ model.to(device)
 LR = 0.001
 DECAY = 0.0
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
-trndataset = SAKTDataset(train, None, MODCOLS, PADVALS, EXTRACOLS)
+trndataset = self = SAKTDataset(train, None, MODCOLS, PADVALS, EXTRACOLS)
 valdataset = SAKTDataset(valid, train, MODCOLS, PADVALS, EXTRACOLS)
 loaderargs = {'num_workers' : 8, 'batch_size' : 256*4}
 trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
