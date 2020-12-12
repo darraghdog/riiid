@@ -136,7 +136,7 @@ class SAKTDataset(Dataset):
         self.maxseq = maxseq
         self.has_target = has_target
         self.targetidx =  [self.cols.index(c) for c in \
-                           ['answered_correctly', 'user_answer', 'correct_answer']]
+                           ['answered_correctly', 'user_answer', 'correct_answer', 'content_user_answer']]
         self.padtarget = np.array([self.padvals[self.targetidx].tolist()])
         self.yidx = self.cols.index('answered_correctly') 
         self.timecols = [self.cols.index(c) for c in ['timestamp','prior_question_elapsed_time']]
