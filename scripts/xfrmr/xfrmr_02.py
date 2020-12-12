@@ -228,7 +228,7 @@ class LearnNet(nn.Module):
             self.emb_lag_time(x[:,:, self.modcols.index('lag_time_cat')].long()), 
             self.emb_elapsed_time(x[:,:, self.modcols.index('elapsed_time_cat')].long())
             ], 2)
-        embcat = self.bn0(embcat.permute(0,2,1)) .permute(0,2,1)
+        #embcat = self.bn0(embcat.permute(0,2,1)) .permute(0,2,1)
         embcat = self.embedding_dropout(embcat)
         
         ## Continuous
