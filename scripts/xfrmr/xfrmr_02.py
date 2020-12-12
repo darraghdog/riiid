@@ -280,6 +280,7 @@ for epoch in range(50):
                 desc=f"Train epoch {epoch}", ncols=0)
     trn_loss = 0.
     for step, batch in pbartrn:
+        optimizer.zero_grad()
         x, y = batch
         x = x.to(device, dtype=torch.float)
         y = y.to(device, dtype=torch.float)
@@ -291,17 +292,10 @@ for epoch in range(50):
             loss = criterion(out, y)
         if device != 'cpu':
             scaler.scale(loss).backward()
-            # Unscales the gradients of optimizer's assigned params in-place
-            scaler.unscale_(optimizer)
-            # Since the gradients of optimizer's assigned params are unscaled, clips as usual:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
-            # optimizer's gradients are already unscaled, so scaler.step does not unscale them,
-            # although it still skips optimizer.step() if the gradients contain infs or NaNs.
             scaler.step(optimizer)
-            # Updates the scale for next iteration.
             scaler.update()
         else:
-            loss.backward(retain_graph=True)
+            loss.backward()
             optimizer.step()
             optimizer.zero_grad()
         
