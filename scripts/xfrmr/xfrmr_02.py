@@ -199,7 +199,7 @@ class LearnNet(nn.Module):
         self.emb_lag_time = nn.Embedding(301, 16)
         self.emb_elapsed_time = nn.Embedding(301, 16)
             
-        self.tag_idx = torch.tensor(['tag' in i for i in self.modcols]).to(device)
+        self.tag_idx = torch.tensor(['tag' in i for i in self.modcols])
         self.tag_wts = torch.ones((sum(self.tag_idx), 16))  / sum(self.tag_idx)
         self.tag_wts = nn.Parameter(self.tag_wts)
         self.tag_wts.requires_grad = True
@@ -270,7 +270,7 @@ DECAY = 0.0
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
 trndataset = SAKTDataset(train, None, MODCOLS, PADVALS, EXTRACOLS)
 valdataset = SAKTDataset(valid, train, MODCOLS, PADVALS, EXTRACOLS)
-loaderargs = {'num_workers' : 8, 'batch_size' : 128}
+loaderargs = {'num_workers' : 8, 'batch_size' : 256}
 trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
 valloader = DataLoader(valdataset, shuffle=False, **loaderargs)
 # x, y = next(iter(trnloader))
