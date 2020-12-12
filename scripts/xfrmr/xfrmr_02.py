@@ -52,8 +52,8 @@ FILTCOLS = ['row_id', 'user_id', 'content_id', 'content_type_id',  \
                        'timestamp', 'user_answer']
 logger.info(f'Loaded columns {FILTCOLS}')
 
-valid = pd.read_feather(f'data/{DIR}/cv{CUT+1}_valid.feather')[FILTCOLS].head(10000)
-train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS].head(10**6)
+valid = pd.read_feather(f'data/{DIR}/cv{CUT+1}_valid.feather')[FILTCOLS]
+train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS]
 gc.collect()
 
 train = train.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
@@ -245,7 +245,7 @@ trndataset = SAKTDataset(train, MODCOLS, PADVALS, EXTRACOLS)
 valdataset = SAKTDataset(valid, MODCOLS, PADVALS, EXTRACOLS)
 loaderargs = {'num_workers' : 16, 'batch_size' : 256*32}
 trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
-valloader = DataLoader(trndataset, shuffle=False, **loaderargs)
+valloader = DataLoader(valdataset, shuffle=False, **loaderargs)
 # x, y = next(iter(trnloader))
 
 criterion =  nn.BCEWithLogitsLoss()
@@ -303,6 +303,7 @@ for epoch in range(50):
                 desc=f"Valid epoch {epoch}", ncols=0)
     y_predls = []
     y_act = valid['answered_correctly'].values
+    model.eval()
     for step, batch in pbarval:
         x, y = batch
         x = x.to(device, dtype=torch.float)
