@@ -246,7 +246,7 @@ logger.info('Create model and loaders')
 model = self =  LearnNet(MODCOLS, CONTCOLS, PADVALS, EXTRACOLS)
 model.to(device)
 
-LR = 0.0001
+LR = 0.00001
 DECAY = 0.0
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
 trndataset = SAKTDataset(train, MODCOLS, PADVALS, EXTRACOLS)
@@ -288,7 +288,7 @@ for epoch in range(50):
 
         with autocast():
             out = model(x)
-        loss = criterion(out, y)
+            loss = criterion(out, y)
         if device != 'cpu':
             scaler.scale(loss).backward(retain_graph=True)
             scaler.step(optimizer)
@@ -302,8 +302,8 @@ for epoch in range(50):
         
         trn_loss += loss.item()
         trn_lossls.append(loss.item())
-        trn_lossls = trn_lossls[-100:]
-        pbartrn.set_postfix({'train loss': trn_loss / (step + 1), 'last 100': sum(trn_lossls) / 100.})
+        trn_lossls = trn_lossls[-1000:]
+        pbartrn.set_postfix({'train loss': trn_loss / (step + 1), 'last 1000': sum(trn_lossls) / 1000.})
     
     pbarval = tqdm(enumerate(valloader), 
                 total = len(valdataset)//loaderargs['batch_size'], 
