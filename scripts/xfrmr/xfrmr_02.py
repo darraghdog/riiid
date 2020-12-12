@@ -285,12 +285,12 @@ for epoch in range(50):
             out = model(x)
         loss = criterion(out, y)
         if device != 'cpu':
-            scaler.scale(loss).backward()
+            scaler.scale(loss).backward(retain_graph=True)
             scaler.step(optimizer)
             scaler.update()
             optimizer.zero_grad()
         else:
-            loss.backward()
+            loss.backward(retain_graph=True)
             optimizer.step()
             optimizer.zero_grad()
         
