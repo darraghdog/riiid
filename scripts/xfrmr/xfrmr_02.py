@@ -192,7 +192,7 @@ class LearnNet(nn.Module):
         
         self.embedding_dropout = SpatialDropout(0.3)
         
-        in_dim = 32 + 4 # + 16 * 3 #+ len(self.contcols)
+        in_dim = 32 + 4 + 16 * 2 #+ len(self.contcols)
         
         self.lstm1 = nn.LSTM(in_dim, LSTM_UNITS, bidirectional=False, batch_first=True)
         self.lstm2 = nn.LSTM(LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
@@ -210,8 +210,8 @@ class LearnNet(nn.Module):
             self.emb_content_id(x[:,:, self.modcols.index('content_id')].long()),
             self.emb_part(x[:,:, self.modcols.index('part')].long()), 
             #(self.emb_tag(x[:,:, self.tag_idx].long()) * self.tag_wts).sum(2),
-            #self.emb_lag_time(x[:,:, self.modcols.index('lag_time_cat')].long()), 
-            #self.emb_elapsed_time(x[:,:, self.modcols.index('elapsed_time_cat')].long())
+            self.emb_lag_time(x[:,:, self.modcols.index('lag_time_cat')].long()), 
+            self.emb_elapsed_time(x[:,:, self.modcols.index('elapsed_time_cat')].long())
             ], 2)
         embcat = self.embedding_dropout(embcat)
         
