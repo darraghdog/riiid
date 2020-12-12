@@ -53,7 +53,7 @@ FILTCOLS = ['row_id', 'user_id', 'content_id', 'content_type_id',  \
 logger.info(f'Loaded columns {FILTCOLS}')
 
 valid = pd.read_feather(f'data/{DIR}/cv{CUT+1}_valid.feather')[FILTCOLS]
-train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS]
+train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS].head(10**6)
 gc.collect()
 
 train = train.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
