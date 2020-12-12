@@ -221,22 +221,22 @@ class LearnNet(nn.Module):
         xinp = embcat
         
         h_lstm1, _ = self.lstm1(xinp)
-        #h_lstm2, _ = self.lstm2(h_lstm1)
-        
+        h_lstm2, _ = self.lstm2(h_lstm1)
+        '''
         # global average pooling
         avg_pool = torch.mean(h_lstm1, 1)
         # global max pooling
         max_pool, _ = torch.max(h_lstm1, 1)
         
         h_conc = torch.cat((max_pool, avg_pool), 1)
-        
+        '''
         # Take last hidden unit
-        #h_conc = torch.cat((h_lstm1[:, -1, :], h_lstm2[:, -1, :]), 1)
-        #h_conc_linear1  = F.relu(self.linear1(h_conc))
-        #h_conc_linear2  = F.relu(self.linear2(h_conc))
-        hidden  = F.relu(self.linear1(h_conc))
+        h_conc = torch.cat((h_lstm1[:, -1, :], h_lstm2[:, -1, :]), 1)
+        h_conc_linear1  = F.relu(self.linear1(h_conc))
+        h_conc_linear2  = F.relu(self.linear2(h_conc))
+        #hidden  = F.relu(self.linear1(h_conc))
         
-        #hidden = h_conc_linear1 + h_conc_linear2
+        hidden = h_conc_linear1 + h_conc_linear2
         
         out = self.linear_out(hidden).flatten()
         
@@ -303,7 +303,8 @@ for epoch in range(50):
         trn_loss += loss.item()
         trn_lossls.append(loss.item())
         trn_lossls = trn_lossls[-1000:]
-        pbartrn.set_postfix({'train loss': trn_loss / (step + 1), 'last 1000': sum(trn_lossls) / 1000.})
+        pbartrn.set_postfix({'train loss': trn_loss / (step + 1), \
+                             'last 1000': sum(trn_lossls) / len(trn_lossls) })
     
     pbarval = tqdm(enumerate(valloader), 
                 total = len(valdataset)//loaderargs['batch_size'], 
