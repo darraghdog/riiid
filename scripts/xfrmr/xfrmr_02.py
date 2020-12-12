@@ -195,25 +195,27 @@ class LearnNet(nn.Module):
         
         self.emb_content_id = nn.Embedding(13526, 64)
         self.emb_part = nn.Embedding(9, 4)
-        self.emb_tag= nn.Embedding(190, 32)
-        self.emb_lag_time = nn.Embedding(301, 32)
-        self.emb_elapsed_time = nn.Embedding(301, 32)
+        self.emb_tag= nn.Embedding(190, 16)
+        self.emb_lag_time = nn.Embedding(301, 16)
+        self.emb_elapsed_time = nn.Embedding(301, 16)
             
         self.tag_idx = torch.tensor(['tag' in i for i in self.modcols]).to(device)
-        self.tag_wts = torch.ones((sum(self.tag_idx), 16), requires_grad=True).to(device)
-        self.tag_wts = self.tag_wts / self.tag_wts.shape[0]
+        self.tag_wts = torch.ones((sum(self.tag_idx), 16))  / sum(self.tag_idx)
+        self.tag_wts = nn.Parameter(self.tag_wts)
+        self.tag_wts.requires_grad = True
+        
         self.cont_idx = [self.modcols.index(c) for c in self.contcols]
         
         self.embedding_dropout = SpatialDropout(dropout)
         
-        in_dim = 64 + 4 + 32 * 2 # + len(self.contcols)
+        in_dim = 64 + 4 + 16 * 3 # + len(self.contcols)
         
         self.lstm1 = nn.LSTM(in_dim, LSTM_UNITS, bidirectional=False, batch_first=True)
         self.lstm2 = nn.LSTM(LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
     
         self.linear1 = nn.Linear(LSTM_UNITS*2, LSTM_UNITS)
         self.linear2 = nn.Linear(LSTM_UNITS*2, LSTM_UNITS)
-        self.linear1 = nn.Linear(LSTM_UNITS, LSTM_UNITS)
+        # self.linear1 = nn.Linear(LSTM_UNITS, LSTM_UNITS)
         
         self.linear_out = nn.Linear(LSTM_UNITS, 1)
         
@@ -223,7 +225,7 @@ class LearnNet(nn.Module):
         embcat = torch.cat([
             self.emb_content_id(x[:,:, self.modcols.index('content_id')].long()),
             self.emb_part(x[:,:, self.modcols.index('part')].long()), 
-            #(self.emb_tag(x[:,:, self.tag_idx].long()) * self.tag_wts).sum(2),
+            (self.emb_tag(x[:,:, self.tag_idx].long()) * self.tag_wts).sum(2),
             self.emb_lag_time(x[:,:, self.modcols.index('lag_time_cat')].long()), 
             self.emb_elapsed_time(x[:,:, self.modcols.index('elapsed_time_cat')].long())
             ], 2)
@@ -236,9 +238,7 @@ class LearnNet(nn.Module):
         xinp = embcat
         
         h_lstm1, _ = self.lstm1(xinp)
-        #h_lstm2, _ = self.lstm2(h_lstm1)
-        
-        h_conc = self.dropout(h_lstm1[:, -1, :])
+        h_lstm2, _ = self.lstm2(h_lstm1)
         
         '''
         # global average pooling
@@ -249,13 +249,13 @@ class LearnNet(nn.Module):
         h_conc = torch.cat((max_pool, avg_pool), 1)
         '''
         # Take last hidden unit
-        # h_conc = torch.cat((h_lstm1[:, -1, :], h_lstm2[:, -1, :]), 1)
+        h_conc = torch.cat((h_lstm1[:, -1, :], h_lstm2[:, -1, :]), 1)
         h_conc_linear1  = F.relu(self.linear1(h_conc))
-        hidden = self.dropout(h_conc_linear1)
-        #h_conc_linear2  = F.relu(self.linear2(h_conc))
+        #hidden = self.dropout(h_conc_linear1)
+        h_conc_linear2  = F.relu(self.linear2(h_conc))
         #hidden  = F.relu(self.linear1(h_conc))
         
-        #hidden = h_conc_linear1 + h_conc_linear2
+        hidden = h_conc_linear1 + h_conc_linear2
         
         out = self.linear_out(hidden).flatten()
         
