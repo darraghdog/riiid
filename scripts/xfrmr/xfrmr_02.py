@@ -170,8 +170,10 @@ class SAKTDataset(Dataset):
     
 class LearnNet(nn.Module):
     def __init__(self, modcols, contcols, padvals, extracols, 
-                 LSTM_UNITS = 128, device = device):
+                 LSTM_UNITS = 128, device = device, dropout = 0.2):
         super(LearnNet, self).__init__()
+        
+        self.dropout = nn.Dropout(dropout)
         
         self.padvals = padvals
         self.extracols = extracols
@@ -190,7 +192,7 @@ class LearnNet(nn.Module):
         self.tag_wts = self.tag_wts / self.tag_wts.shape[0]
         self.cont_idx = [self.modcols.index(c) for c in self.contcols]
         
-        self.embedding_dropout = SpatialDropout(0.3)
+        self.embedding_dropout = SpatialDropout(dropout)
         
         in_dim = 32 + 4 + 16 * 2 #+ len(self.contcols)
         
@@ -199,6 +201,7 @@ class LearnNet(nn.Module):
     
         self.linear1 = nn.Linear(LSTM_UNITS*2, LSTM_UNITS)
         self.linear2 = nn.Linear(LSTM_UNITS*2, LSTM_UNITS)
+        self.linear1 = nn.Linear(LSTM_UNITS, LSTM_UNITS)
         
         self.linear_out = nn.Linear(LSTM_UNITS, 1)
         
@@ -212,7 +215,7 @@ class LearnNet(nn.Module):
             self.emb_lag_time(x[:,:, self.modcols.index('lag_time_cat')].long()), 
             self.emb_elapsed_time(x[:,:, self.modcols.index('elapsed_time_cat')].long())
             ], 2)
-        #embcat = self.embedding_dropout(embcat)
+        embcat = self.embedding_dropout(embcat)
         
         ## Continuous
         #contmat  = x[:,:, self.cont_idx]
@@ -221,7 +224,10 @@ class LearnNet(nn.Module):
         xinp = embcat
         
         h_lstm1, _ = self.lstm1(xinp)
-        h_lstm2, _ = self.lstm2(h_lstm1)
+        #h_lstm2, _ = self.lstm2(h_lstm1)
+        
+        h_conc = self.dropout(h_lstm1[:, -1, :])
+        
         '''
         # global average pooling
         avg_pool = torch.mean(h_lstm1, 1)
@@ -231,12 +237,13 @@ class LearnNet(nn.Module):
         h_conc = torch.cat((max_pool, avg_pool), 1)
         '''
         # Take last hidden unit
-        h_conc = torch.cat((h_lstm1[:, -1, :], h_lstm2[:, -1, :]), 1)
+        # h_conc = torch.cat((h_lstm1[:, -1, :], h_lstm2[:, -1, :]), 1)
         h_conc_linear1  = F.relu(self.linear1(h_conc))
-        h_conc_linear2  = F.relu(self.linear2(h_conc))
+        hidden = self.dropout(h_conc_linear1)
+        #h_conc_linear2  = F.relu(self.linear2(h_conc))
         #hidden  = F.relu(self.linear1(h_conc))
         
-        hidden = h_conc_linear1 + h_conc_linear2
+        #hidden = h_conc_linear1 + h_conc_linear2
         
         out = self.linear_out(hidden).flatten()
         
@@ -279,7 +286,9 @@ for epoch in range(50):
                 total = len(trndataset)//loaderargs['batch_size'], 
                 desc=f"Train epoch {epoch}", ncols=0)
     trn_loss = 0.
+    
     for step, batch in pbartrn:
+
         optimizer.zero_grad()
         x, y = batch
         x = x.to(device, dtype=torch.float)
