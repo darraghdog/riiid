@@ -206,7 +206,7 @@ class LearnNet(nn.Module):
         
         self.embedding_dropout = SpatialDropout(dropout)
         
-        in_dim = 64 + 4 + 32 * 2 + len(self.contcols)
+        in_dim = 64 + 4 + 32 * 2 # + len(self.contcols)
         
         self.lstm1 = nn.LSTM(in_dim, LSTM_UNITS, bidirectional=False, batch_first=True)
         self.lstm2 = nn.LSTM(LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
@@ -230,10 +230,10 @@ class LearnNet(nn.Module):
         embcat = self.embedding_dropout(embcat)
         
         ## Continuous
-        contmat  = x[:,:, self.cont_idx]
+        # contmat  = x[:,:, self.cont_idx]
         # Weighted sum of tags - hopefully good weights are learnt
-        xinp = torch.cat([embcat, contmat], 2)
-        # xinp = embcat
+        # xinp = torch.cat([embcat, contmat], 2)
+        xinp = embcat
         
         h_lstm1, _ = self.lstm1(xinp)
         #h_lstm2, _ = self.lstm2(h_lstm1)
