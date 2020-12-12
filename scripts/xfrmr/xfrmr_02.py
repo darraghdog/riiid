@@ -199,6 +199,7 @@ class LearnNet(nn.Module):
     
         self.linear1 = nn.Linear(LSTM_UNITS*2, LSTM_UNITS)
         self.linear2 = nn.Linear(LSTM_UNITS*2, LSTM_UNITS)
+        self.linear1 = nn.Linear(LSTM_UNITS, LSTM_UNITS)
         
         self.linear_out = nn.Linear(LSTM_UNITS, 1)
         
