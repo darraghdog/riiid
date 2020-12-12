@@ -213,7 +213,7 @@ class LearnNet(nn.Module):
             self.emb_lag_time(x[:,:, self.modcols.index('lag_time_cat')].long()), 
             self.emb_elapsed_time(x[:,:, self.modcols.index('elapsed_time_cat')].long())
             ], 2)
-        embcat = self.embedding_dropout(embcat)
+        #embcat = self.embedding_dropout(embcat)
         
         ## Continuous
         #contmat  = x[:,:, self.cont_idx]
@@ -250,7 +250,7 @@ trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
 valloader = DataLoader(valdataset, shuffle=False, **loaderargs)
 # x, y = next(iter(trnloader))
 
-criterion =  nn.BCELoss()
+criterion =  nn.BCEWithLogitsLoss()
 
 param_optimizer = list(model.named_parameters())
 no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
@@ -285,7 +285,6 @@ for epoch in range(50):
 
         with autocast():
             out = model(x)
-        out = torch.sigmoid(out)
         loss = criterion(out, y)
         if device != 'cpu':
             scaler.scale(loss).backward(retain_graph=True)
