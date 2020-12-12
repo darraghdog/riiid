@@ -50,7 +50,7 @@ FILTCOLS = ['row_id', 'user_id', 'content_id', 'content_type_id',  \
                'answered_correctly', 'prior_question_elapsed_time', \
                    'prior_question_had_explanation', 'task_container_id', \
                        'timestamp', 'user_answer']
-logger.info(f'Loaded columns {FILTCOLS}')
+logger.info(f'Loaded columns {", ".join(FILTCOLS)}')
 
 valid = pd.read_feather(f'data/{DIR}/cv{CUT+1}_valid.feather')[FILTCOLS]
 train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS]
@@ -211,8 +211,9 @@ class LearnNet(nn.Module):
         LSTM_UNITS = 32 + 4 + 16 * 3 # + len(self.contcols)
         
         self.lstm1 = nn.LSTM(LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
-    
+        self.bnlstm = nn.BatchNorm1d(num_features=LSTM_UNITS)
         self.linear1 = nn.Linear(LSTM_UNITS, LSTM_UNITS//2)
+        self.bn = nn.BatchNorm1d(num_features=LSTM_UNITS//2)
         
         self.linear_out = nn.Linear(LSTM_UNITS//2, 1)
         
@@ -236,9 +237,9 @@ class LearnNet(nn.Module):
         
         h_lstm1, _ = self.lstm1(xinp)
         # Take last hidden unit
-        hidden = self.dropout(h_lstm1[:,-1,:])
+        hidden = self.dropout(self.bnlstm(h_lstm1[:,-1,:]))
         hidden  = F.relu(self.linear1(hidden))
-        hidden = self.dropout(hidden)
+        hidden = self.dropout(self.bn(hidden))
         out = self.linear_out(hidden).flatten()
         
         return out
