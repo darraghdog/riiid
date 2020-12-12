@@ -99,7 +99,7 @@ MODCOLS = ['content_id', 'content_type_id', 'prior_question_elapsed_time', \
 NOPAD = ['prior_question_elapsed_time', 'prior_question_had_explanation', \
              'timestamp', 'content_type_id']
 EMBCOLS = ['content_id', 'part', 'bundle_id'] + [f'tag{i}' for i in range(6)]
-TARGETCOLS = [ 'user_answer', 'answered_correctly', 'correct_answer']
+TARGETCOLS = [ 'user_answer', 'answered_correctly', 'correct_answer', 'content_user_answer']
 CONTCOLS = ['timestamp', 'prior_question_elapsed_time', 'prior_question_had_explanation']
 PADVALS = train[MODCOLS].max(0) + 1
 PADVALS[NOPAD] = 0
