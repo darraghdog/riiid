@@ -208,9 +208,9 @@ class LearnNet(nn.Module):
         embcat = torch.cat([
             self.emb_content_id(x[:,:, self.modcols.index('content_id')].long()),
             self.emb_part(x[:,:, self.modcols.index('part')].long()), 
-            (self.emb_tag(x[:,:, self.tag_idx].long()) * self.tag_wts).sum(2),
-            self.emb_lag_time(x[:,:, self.modcols.index('lag_time_cat')].long()), 
-            self.emb_elapsed_time(x[:,:, self.modcols.index('elapsed_time_cat')].long())
+            #(self.emb_tag(x[:,:, self.tag_idx].long()) * self.tag_wts).sum(2),
+            #self.emb_lag_time(x[:,:, self.modcols.index('lag_time_cat')].long()), 
+            #self.emb_elapsed_time(x[:,:, self.modcols.index('elapsed_time_cat')].long())
             ], 2)
         embcat = self.embedding_dropout(embcat)
         
