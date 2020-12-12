@@ -1,10 +1,12 @@
 # https://www.kaggle.com/bminixhofer/speed-up-your-rnn-with-sequence-bucketing
 # https://www.kaggle.com/its7171/lgbm-with-loop-feature-engineering/#data
 import os
-PATH = '/Users/dhanley/Documents/riiid/' \
-    if platform.system() == 'Darwin' else '/home/dhanley/riiid'
-os.chdir(PATH)
+import platform
 import sys
+PATH = '/Users/dhanley/Documents/riiid/' \
+    if platform.system() == 'Darwin' else '/mount/riiid'
+os.chdir(PATH)
+sys.path.append(PATH)
 import pandas as pd
 import numpy as np
 import gc
