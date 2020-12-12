@@ -208,11 +208,11 @@ class LearnNet(nn.Module):
         
         self.embedding_dropout = SpatialDropout(dropout)
         
-        LSTM_UNITS = 32 + 4 + 16 * 3 # + len(self.contcols)
+        LSTM_UNITS = 32 + 4 + 16 * 3 + len(self.contcols)
         
         self.lstm1 = nn.LSTM(LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
         self.linear1 = nn.Linear(LSTM_UNITS, LSTM_UNITS//2)
-        self.bn0 = nn.BatchNorm1d(num_features=LSTM_UNITS)
+        self.bn0 = nn.BatchNorm1d(num_features=len(self.contcols))
         self.bn1 = nn.BatchNorm1d(num_features=LSTM_UNITS)
         self.bn2 = nn.BatchNorm1d(num_features=LSTM_UNITS//2)
         
@@ -228,15 +228,14 @@ class LearnNet(nn.Module):
             self.emb_lag_time(x[:,:, self.modcols.index('lag_time_cat')].long()), 
             self.emb_elapsed_time(x[:,:, self.modcols.index('elapsed_time_cat')].long())
             ], 2)
-        #embcat = self.bn0(embcat.permute(0,2,1)) .permute(0,2,1)
         embcat = self.embedding_dropout(embcat)
         
         ## Continuous
-        # contmat  = x[:,:, self.cont_idx]
-        # Weighted sum of tags - hopefully good weights are learnt
-        # xinp = torch.cat([embcat, contmat], 2)
+        contmat  = x[:,:, self.cont_idx]
+        contmat = self.bn0(contmat.permute(0,2,1)) .permute(0,2,1)
         
-        xinp = embcat
+        # Weighted sum of tags - hopefully good weights are learnt
+        xinp = torch.cat([embcat, contmat], 2)
         
         h_lstm1, _ = self.lstm1(xinp)
         # Take last hidden unit
