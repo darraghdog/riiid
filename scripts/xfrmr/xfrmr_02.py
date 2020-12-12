@@ -123,7 +123,7 @@ class SAKTDataset(Dataset):
         self.quidx = self.data.query('base==0').reset_index()[['user_id', 'index']].values
         
         if basedf is None:
-            self.quidx = self.quidx[np.random.choice(self.quidx.shape[0], 2*10**6, replace=False)]
+            self.quidx = self.quidx[np.random.choice(self.quidx.shape[0], 4*10**6, replace=False)]
 
             
         self.dfmat = self.data[self.cols].values
@@ -256,7 +256,7 @@ DECAY = 0.0
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
 trndataset = SAKTDataset(train, None, MODCOLS, PADVALS, EXTRACOLS)
 valdataset = SAKTDataset(valid, train, MODCOLS, PADVALS, EXTRACOLS)
-loaderargs = {'num_workers' : 8, 'batch_size' : 256*2}
+loaderargs = {'num_workers' : 8, 'batch_size' : 256*4}
 trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
 valloader = DataLoader(valdataset, shuffle=False, **loaderargs)
 # x, y = next(iter(trnloader))
