@@ -122,7 +122,7 @@ class SAKTDataset(Dataset):
             .groupby(['user_id'])['index'].apply(list).to_dict()
         self.quidx = self.data.query('base==0').reset_index()[['user_id', 'index']].values
         
-        if basedf is not None:
+        if basedf is None:
             self.quidx = self.quidx[np.random.choice(self.quidx.shape[0], 10**6, replace=False)]
 
             
