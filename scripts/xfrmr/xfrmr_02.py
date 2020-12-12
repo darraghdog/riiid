@@ -121,6 +121,9 @@ class SAKTDataset(Dataset):
         self.uidx = self.data.reset_index()\
             .groupby(['user_id'])['index'].apply(list).to_dict()
         self.quidx = self.data.query('base==0').reset_index()[['user_id', 'index']].values
+        
+        self.quidx = self.quidx[np.random.choice(self.quidx.shape[0], 10**6, replace=False)]
+
             
         self.dfmat = self.data[self.cols].values
         self.padmat = self.padvals[self.cols].values
@@ -175,10 +178,6 @@ class SAKTDataset(Dataset):
         target = torch.tensor(target)
         
         return umat, target
-    
-    
-data, basedf, cols, padvals, extracols = train, None, MODCOLS, PADVALS, EXTRACOLS
-self = SAKTDataset(train, None, MODCOLS, PADVALS, EXTRACOLS)
     
 class LearnNet(nn.Module):
     def __init__(self, modcols, contcols, padvals, extracols, 
@@ -265,7 +264,7 @@ logger.info('Create model and loaders')
 model = self =  LearnNet(MODCOLS, CONTCOLS, PADVALS, EXTRACOLS)
 model.to(device)
 
-LR = 0.0001
+LR = 0.001
 DECAY = 0.0
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
 trndataset = SAKTDataset(train, None, MODCOLS, PADVALS, EXTRACOLS)
