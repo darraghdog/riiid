@@ -290,10 +290,16 @@ for epoch in range(50):
             out = model(x)
             loss = criterion(out, y)
         if device != 'cpu':
-            scaler.scale(loss).backward(retain_graph=True)
+            scaler.scale(loss).backward()
+            # Unscales the gradients of optimizer's assigned params in-place
+            scaler.unscale_(optimizer)
+            # Since the gradients of optimizer's assigned params are unscaled, clips as usual:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
+            # optimizer's gradients are already unscaled, so scaler.step does not unscale them,
+            # although it still skips optimizer.step() if the gradients contain infs or NaNs.
             scaler.step(optimizer)
+            # Updates the scale for next iteration.
             scaler.update()
-            optimizer.zero_grad()
         else:
             loss.backward(retain_graph=True)
             optimizer.step()
