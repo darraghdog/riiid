@@ -179,11 +179,11 @@ class LearnNet(nn.Module):
             
         self.tag_idx = torch.tensor(['tag' in i for i in self.modcols]).to(device)
         self.tag_wts = torch.ones((sum(self.tag_idx), 16), requires_grad=True).to(device)
-        self.cont_idx = [self.modcols.index(c) for c in contcols]
+        self.cont_idx = [self.modcols.index(c) for c in self.contcols]
         
         self.embedding_dropout = SpatialDropout(0.3)
         
-        in_dim = 32 + 4 + 16 + len(contcols)
+        in_dim = 32 + 4 + 16 + len(self.contcols)
         
         self.lstm1 = nn.LSTM(in_dim, LSTM_UNITS, bidirectional=False, batch_first=True)
         self.lstm2 = nn.LSTM(LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
@@ -234,8 +234,10 @@ valdataset = SAKTDataset(valid, MODCOLS, PADVALS)
 loaderargs = {'num_workers' : 16, 'batch_size' : 256}
 trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
 valloader = DataLoader(trndataset, shuffle=False, **loaderargs)
+# x, y = next(iter(trnloader))
 
-criterion =  F.binary_cross_entropy_with_logits
+criterion =  nn.BCEWithLogitsLoss()
+
 param_optimizer = list(model.named_parameters())
 no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
 plist = [
@@ -266,7 +268,7 @@ for epoch in range(50):
         y = y.to(device, dtype=torch.float)
         x = torch.autograd.Variable(x, requires_grad=True)
         y = torch.autograd.Variable(y)
-        
+
         with autocast():
             out = model(x)
         loss = criterion(out, y)
