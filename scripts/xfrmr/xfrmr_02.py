@@ -242,7 +242,7 @@ class LearnNet(nn.Module):
         # Take last hidden unit
         hidden = self.dropout( self.bn1(h_lstm1[:,-1,:]) )
         hidden  = F.relu(self.linear1(hidden))
-        hidden = self.dropout(self.bn1(hidden))
+        hidden = self.dropout(self.bn2(hidden))
         out = self.linear_out(hidden).flatten()
         
         return out
