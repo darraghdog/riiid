@@ -228,7 +228,7 @@ class LearnNet(nn.Module):
         #h_conc = torch.cat((h_lstm1[:, -1, :], h_lstm2[:, -1, :]), 1)
         #h_conc_linear1  = F.relu(self.linear1(h_conc))
         #h_conc_linear2  = F.relu(self.linear2(h_conc))
-        hidden  = F.relu(self.linear1(h_lstm1[:, 0, :]))
+        hidden  = F.relu(self.linear1(h_lstm1[:, -1, :]))
         
         #hidden = h_conc_linear1 + h_conc_linear2
         
