@@ -193,11 +193,11 @@ class LearnNet(nn.Module):
         self.contcols = contcols
         self.embcols = ['content_id', 'part']
         
-        self.emb_content_id = nn.Embedding(13526, 32)
+        self.emb_content_id = nn.Embedding(13526, 64)
         self.emb_part = nn.Embedding(9, 4)
-        self.emb_tag= nn.Embedding(190, 16)
-        self.emb_lag_time = nn.Embedding(301, 16)
-        self.emb_elapsed_time = nn.Embedding(301, 16)
+        self.emb_tag= nn.Embedding(190, 32)
+        self.emb_lag_time = nn.Embedding(301, 32)
+        self.emb_elapsed_time = nn.Embedding(301, 32)
             
         self.tag_idx = torch.tensor(['tag' in i for i in self.modcols]).to(device)
         self.tag_wts = torch.ones((sum(self.tag_idx), 16), requires_grad=True).to(device)
@@ -206,7 +206,7 @@ class LearnNet(nn.Module):
         
         self.embedding_dropout = SpatialDropout(dropout)
         
-        in_dim = 32 + 4 + 16 * 2 + len(self.contcols)
+        in_dim = 64 + 4 + 32 * 2 + len(self.contcols)
         
         self.lstm1 = nn.LSTM(in_dim, LSTM_UNITS, bidirectional=False, batch_first=True)
         self.lstm2 = nn.LSTM(LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
