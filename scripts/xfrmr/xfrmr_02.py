@@ -240,17 +240,17 @@ logger.info('Create model and loaders')
 model = self =  LearnNet(MODCOLS, CONTCOLS, PADVALS, EXTRACOLS)
 model.to(device)
 
-LR = 0.00001
+LR = 0.000001
 DECAY = 0.0
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
 trndataset = SAKTDataset(train, MODCOLS, PADVALS, EXTRACOLS)
 valdataset = SAKTDataset(valid, MODCOLS, PADVALS, EXTRACOLS)
-loaderargs = {'num_workers' : 32, 'batch_size' : 256}
+loaderargs = {'num_workers' : 64, 'batch_size' : 256}
 trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
 valloader = DataLoader(valdataset, shuffle=False, **loaderargs)
 # x, y = next(iter(trnloader))
 
-criterion =  nn.BCEWithLogitsLoss()
+criterion =  nn.BCELoss()
 
 param_optimizer = list(model.named_parameters())
 no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
@@ -285,6 +285,7 @@ for epoch in range(50):
 
         with autocast():
             out = model(x)
+        out = torch.sigmoid(out)
         loss = criterion(out, y)
         if device != 'cpu':
             scaler.scale(loss).backward(retain_graph=True)
