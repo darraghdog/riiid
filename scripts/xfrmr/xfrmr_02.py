@@ -105,7 +105,7 @@ EXTRACOLS = ['lag_time_cat', 'elapsed_time_cat']
 
 class SAKTDataset(Dataset):
     def __init__(self, data, basedf, cols, padvals, extracols, 
-                 maxseq = 100, has_target = True): 
+                 maxseq = 200, has_target = True): 
         super(SAKTDataset, self).__init__()
         
         self.cols = cols
