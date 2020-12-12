@@ -303,7 +303,7 @@ for epoch in range(50):
         trn_loss += loss.item()
         trn_lossls.append(loss.item())
         trn_lossls = trn_lossls[-100:]
-        pbartrn.set_postfix({'train loss': trn_loss / (step + 1), 'last 100': trn_lossls / 100})
+        pbartrn.set_postfix({'train loss': trn_loss / (step + 1), 'last 100': sum(trn_lossls) / 100.})
     
     pbarval = tqdm(enumerate(valloader), 
                 total = len(valdataset)//loaderargs['batch_size'], 
