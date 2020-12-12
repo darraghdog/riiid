@@ -140,17 +140,16 @@ class SAKTDataset(Dataset):
     def __getitem__(self, idx):
         
         # Get index of user and question
-        u,q = self.quidx[1000]
+        u,q = self.quidx[idx]
         # Pull out ths user index sequence
         useqidx = self.uidx[u]
         # Pull out position of question
         cappos  = useqidx.index(q) + 1
         # Pull out the sequence of questions up to that question
-        umat = self.dfmat[useqidx[:cappos]].astype(np.float32)
+        useqidx = useqidx[:cappos][-100:]
+        umat = self.dfmat[useqidx].astype(np.float32)
         
-        if umat.shape[0] >= self.maxseq:
-            umat = umat[:self.maxseq]
-        else:
+        if umat.shape[0] < self.maxseq:
             padlen = self.maxseq - umat.shape[0] 
             upadmat = np.tile(self.padmat, (padlen, 1))
             umat = np.concatenate((upadmat, umat), 0)
@@ -176,6 +175,10 @@ class SAKTDataset(Dataset):
         target = torch.tensor(target)
         
         return umat, target
+    
+    
+data, basedf, cols, padvals, extracols = train, None, MODCOLS, PADVALS, EXTRACOLS
+self = SAKTDataset(train, None, MODCOLS, PADVALS, EXTRACOLS)
     
 class LearnNet(nn.Module):
     def __init__(self, modcols, contcols, padvals, extracols, 
