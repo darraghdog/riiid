@@ -104,7 +104,7 @@ EXTRACOLS = ['lag_time_cat', 'elapsed_time_cat']
 
 class SAKTDataset(Dataset):
     def __init__(self, data, cols, padvals, extracols, 
-                 maxseq = 100, has_target = True): 
+                 maxseq = 100, has_target = True, train = True): 
         super(SAKTDataset, self).__init__()
         
         self.cols = cols
@@ -114,6 +114,7 @@ class SAKTDataset(Dataset):
         self.uidx = self.data.reset_index()\
             .groupby(['user_id'])['index'].apply(list).to_dict()
         self.quidx = self.data.reset_index()[['user_id', 'index']].values
+            
         self.dfmat = self.data[self.cols].values
         self.padmat = self.padvals[self.cols].values
         self.users = self.data.user_id.unique() 
@@ -136,7 +137,7 @@ class SAKTDataset(Dataset):
         # Pull out ths user index sequence
         useqidx = self.uidx[u]
         # Pull out position of question
-        cappos  = useqidx.index(q)
+        cappos  = useqidx.index(q) + 1
         # Pull out the sequence of questions up to that question
         umat = self.dfmat[useqidx[:cappos]].astype(np.float32)
         
@@ -162,7 +163,8 @@ class SAKTDataset(Dataset):
             target = umat[-1, self.yidx ]
             umat[:, self.targetidx] = np.concatenate((self.padtarget, \
                                                       umat[:-1, self.targetidx]), 0)
-        
+        if target > 1:
+            logger.info(f'{target}\t{u},{q}\t{idx}' )
         umat = torch.tensor(umat).float()
         target = torch.tensor(target)
         
@@ -256,9 +258,9 @@ model.to(device)
 LR = 0.00001
 DECAY = 0.0
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
-trndataset = SAKTDataset(train, MODCOLS, PADVALS, EXTRACOLS)
+trndataset = self = SAKTDataset(train, MODCOLS, PADVALS, EXTRACOLS)
 valdataset = SAKTDataset(valid, MODCOLS, PADVALS, EXTRACOLS)
-loaderargs = {'num_workers' : 16, 'batch_size' : 256}
+loaderargs = {'num_workers' : 16, 'batch_size' : 256*16}
 trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
 valloader = DataLoader(valdataset, shuffle=False, **loaderargs)
 # x, y = next(iter(trnloader))
