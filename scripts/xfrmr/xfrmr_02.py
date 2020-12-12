@@ -53,7 +53,7 @@ FILTCOLS = ['row_id', 'user_id', 'content_id', 'content_type_id',  \
 logger.info(f'Loaded columns {FILTCOLS}')
 
 valid = pd.read_feather(f'data/{DIR}/cv{CUT+1}_valid.feather')[FILTCOLS]
-train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS].head(10**6)
+train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS]
 gc.collect()
 
 train = train.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
@@ -102,18 +102,25 @@ PADVALS[NOPAD] = 0
 EXTRACOLS = ['lag_time_cat', 'elapsed_time_cat']
 #self = SAKTDataset(train, MODCOLS, PADVALS)
 
+
 class SAKTDataset(Dataset):
-    def __init__(self, data, cols, padvals, extracols, 
-                 maxseq = 100, has_target = True, train = True): 
+    def __init__(self, data, basedf, cols, padvals, extracols, 
+                 maxseq = 100, has_target = True): 
         super(SAKTDataset, self).__init__()
         
         self.cols = cols
         self.extracols = extracols
         self.data = data
+        self.data['base'] = 0
+        if basedf is not None: 
+            self.base = basedf
+            self.base['base'] = 1
+            self.data = pd.concat([self.base, self.data], 0)
+        self.data = self.data.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
         self.padvals = padvals
         self.uidx = self.data.reset_index()\
             .groupby(['user_id'])['index'].apply(list).to_dict()
-        self.quidx = self.data.reset_index()[['user_id', 'index']].values
+        self.quidx = self.data.query('base==0').reset_index()[['user_id', 'index']].values
             
         self.dfmat = self.data[self.cols].values
         self.padmat = self.padvals[self.cols].values
@@ -133,7 +140,7 @@ class SAKTDataset(Dataset):
     def __getitem__(self, idx):
         
         # Get index of user and question
-        u,q = self.quidx[idx]
+        u,q = self.quidx[1000]
         # Pull out ths user index sequence
         useqidx = self.uidx[u]
         # Pull out position of question
@@ -169,6 +176,14 @@ class SAKTDataset(Dataset):
         target = torch.tensor(target)
         
         return umat, target
+    
+# Should we be stepping; all 0's first, then all 1's, then all 2,s 
+trndataset = SAKTDataset(train, None, MODCOLS, PADVALS, EXTRACOLS)
+valdataset = self = SAKTDataset(valid, train, MODCOLS, PADVALS, EXTRACOLS)
+loaderargs = {'num_workers' : 8, 'batch_size' : 256}
+trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
+valloader = DataLoader(valdataset, shuffle=False, **loaderargs)
+
     
 class LearnNet(nn.Module):
     def __init__(self, modcols, contcols, padvals, extracols, 
