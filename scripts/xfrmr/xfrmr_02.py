@@ -199,7 +199,6 @@ class LearnNet(nn.Module):
     
         self.linear1 = nn.Linear(LSTM_UNITS*2, LSTM_UNITS)
         self.linear2 = nn.Linear(LSTM_UNITS*2, LSTM_UNITS)
-        self.linear1 = nn.Linear(LSTM_UNITS, LSTM_UNITS)
         
         self.linear_out = nn.Linear(LSTM_UNITS, 1)
         
@@ -224,11 +223,18 @@ class LearnNet(nn.Module):
         h_lstm1, _ = self.lstm1(xinp)
         #h_lstm2, _ = self.lstm2(h_lstm1)
         
+        # global average pooling
+        avg_pool = torch.mean(h_lstm1, 1)
+        # global max pooling
+        max_pool, _ = torch.max(h_lstm1, 1)
+        
+        h_conc = torch.cat((max_pool, avg_pool), 1)
+        
         # Take last hidden unit
         #h_conc = torch.cat((h_lstm1[:, -1, :], h_lstm2[:, -1, :]), 1)
         #h_conc_linear1  = F.relu(self.linear1(h_conc))
         #h_conc_linear2  = F.relu(self.linear2(h_conc))
-        hidden  = F.relu(self.linear1(h_lstm1[:, -1, :]))
+        hidden  = F.relu(self.linear1(h_conc))
         
         #hidden = h_conc_linear1 + h_conc_linear2
         
@@ -264,6 +270,7 @@ if device != 'cpu':
 
 logger.info('Start training')
 best_val_loss = 100.
+trn_lossls = []
 for epoch in range(50):
     for param in model.parameters():
         param.requires_grad = True
@@ -294,7 +301,9 @@ for epoch in range(50):
         
         
         trn_loss += loss.item()
-        pbartrn.set_postfix({'train loss': trn_loss / (step + 1) })
+        trn_lossls.append(loss.item())
+        trn_lossls = trn_lossls[-100:]
+        pbartrn.set_postfix({'train loss': trn_loss / (step + 1), 'last 100': trn_lossls / 100})
     
     pbarval = tqdm(enumerate(valloader), 
                 total = len(valdataset)//loaderargs['batch_size'], 
