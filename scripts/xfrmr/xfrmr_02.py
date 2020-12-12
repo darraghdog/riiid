@@ -248,16 +248,6 @@ trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
 valloader = DataLoader(trndataset, shuffle=False, **loaderargs)
 # x, y = next(iter(trnloader))
 
-x[:,:, model.cont_idx]
-
-from torchvision import transforms
-transform = transforms.Compose([
-    transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                         std=[0.229, 0.224, 0.225])
-])
-x[:,:,trndataset.timecols].std()
-
-
 criterion =  nn.BCEWithLogitsLoss()
 
 param_optimizer = list(model.named_parameters())
