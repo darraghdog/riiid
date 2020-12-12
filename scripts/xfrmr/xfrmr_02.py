@@ -52,8 +52,8 @@ FILTCOLS = ['row_id', 'user_id', 'content_id', 'content_type_id',  \
                        'timestamp', 'user_answer']
 logger.info(f'Loaded columns {FILTCOLS}')
 
-valid = pd.read_feather(f'data/{DIR}/cv{CUT+1}_valid.feather')[FILTCOLS].head(10**5)
-train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS].head(10**6)
+valid = pd.read_feather(f'data/{DIR}/cv{CUT+1}_valid.feather')[FILTCOLS]
+train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS]
 gc.collect()
 
 train = train.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
@@ -240,12 +240,12 @@ logger.info('Create model and loaders')
 model = self =  LearnNet(MODCOLS, CONTCOLS, PADVALS, EXTRACOLS)
 model.to(device)
 
-LR = 0.0001
+LR = 0.00001
 DECAY = 0.0
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
 trndataset = SAKTDataset(train, MODCOLS, PADVALS, EXTRACOLS)
 valdataset = SAKTDataset(valid, MODCOLS, PADVALS, EXTRACOLS)
-loaderargs = {'num_workers' : 16, 'batch_size' : 256*32}
+loaderargs = {'num_workers' : 16, 'batch_size' : 128}
 trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
 valloader = DataLoader(valdataset, shuffle=False, **loaderargs)
 # x, y = next(iter(trnloader))
