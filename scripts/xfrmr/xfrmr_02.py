@@ -192,7 +192,7 @@ class LearnNet(nn.Module):
         
         self.embedding_dropout = SpatialDropout(0.3)
         
-        in_dim = 32 + 4 + 16 * 3 #+ len(self.contcols)
+        in_dim = 32 + 4 # + 16 * 3 #+ len(self.contcols)
         
         self.lstm1 = nn.LSTM(in_dim, LSTM_UNITS, bidirectional=False, batch_first=True)
         self.lstm2 = nn.LSTM(LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
