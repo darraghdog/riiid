@@ -284,7 +284,6 @@ for epoch in range(50):
         with autocast():
             out = model(x)
         loss = criterion(out, y)
-        if step % 100: logger.info(model.tag_wts)
         if device != 'cpu':
             scaler.scale(loss).backward()
             scaler.step(optimizer)
