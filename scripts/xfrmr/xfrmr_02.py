@@ -177,14 +177,6 @@ class SAKTDataset(Dataset):
         
         return umat, target
     
-# Should we be stepping; all 0's first, then all 1's, then all 2,s 
-trndataset = SAKTDataset(train, None, MODCOLS, PADVALS, EXTRACOLS)
-valdataset = self = SAKTDataset(valid, train, MODCOLS, PADVALS, EXTRACOLS)
-loaderargs = {'num_workers' : 8, 'batch_size' : 256}
-trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
-valloader = DataLoader(valdataset, shuffle=False, **loaderargs)
-
-    
 class LearnNet(nn.Module):
     def __init__(self, modcols, contcols, padvals, extracols, 
                  LSTM_UNITS = 128, device = device, dropout = 0.2):
@@ -273,8 +265,8 @@ model.to(device)
 LR = 0.00001
 DECAY = 0.0
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
-trndataset = self = SAKTDataset(train, MODCOLS, PADVALS, EXTRACOLS)
-valdataset = SAKTDataset(valid, MODCOLS, PADVALS, EXTRACOLS)
+trndataset = SAKTDataset(train, None, MODCOLS, PADVALS, EXTRACOLS)
+valdataset = SAKTDataset(valid, train, MODCOLS, PADVALS, EXTRACOLS)
 loaderargs = {'num_workers' : 8, 'batch_size' : 256}
 trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
 valloader = DataLoader(valdataset, shuffle=False, **loaderargs)
