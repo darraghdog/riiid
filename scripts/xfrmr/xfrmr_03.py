@@ -443,7 +443,7 @@ DECAY = 0.0
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
 trndataset = self = SAKTDataset(train, None, MODCOLS, PADVALS, EXTRACOLS)
 valdataset = SAKTDataset(valid, train, MODCOLS, PADVALS, EXTRACOLS)
-loaderargs = {'num_workers' : 8, 'batch_size' : 256*4}
+loaderargs = {'num_workers' : 8, 'batch_size' : 256*8}
 trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
 valloader = DataLoader(valdataset, shuffle=False, **loaderargs)
 # x, y = next(iter(trnloader))
