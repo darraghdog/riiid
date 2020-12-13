@@ -170,7 +170,7 @@ FILTCOLS = ['row_id', 'user_id', 'content_id', 'content_type_id',  \
 logger.info(f'Loaded columns {", ".join(FILTCOLS)}')
 
 valid = pd.read_feather(f'data/{DIR}/cv{CUT+1}_valid.feather')[FILTCOLS]
-train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS].tail(3*10**6)
+train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS]
 gc.collect()
 
 train = train.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
@@ -324,7 +324,7 @@ class SAKTDataset(Dataset):
         self.quidx = self.data.query('base==0').reset_index()[['user_id', 'index']].values
         
         if basedf is None:
-            self.quidx = self.quidx[np.random.choice(self.quidx.shape[0], 2*10**6, replace=False)]
+            self.quidx = self.quidx[np.random.choice(self.quidx.shape[0], 4*10**6, replace=False)]
         
         self.dfmat = self.data[self.cols].values
         self.padmat = self.padvals[self.cols].values
@@ -466,7 +466,6 @@ class LearnNet(nn.Module):
         else:
             hidden, _ = self.seqnet(xinp)
         # Take last hidden unit
-        logger.info(hidden.shape)
         hidden = hidden[:,-1,:]
         hidden = self.dropout( self.bn1( hidden) )
         hidden  = F.relu(self.linear1(hidden))
