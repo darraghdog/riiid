@@ -149,6 +149,7 @@ arg('--batchsize', type=int, default=1024)
 arg('--lr', type=float, default=0.001)
 arg('--epochs', type=int, default=20)
 arg('--maxseq', type=int, default=100)
+arg('--model', type=str, default='lstm')
 arg('--label-smoothing', type=float, default=0.01)
 args = parser.parse_args()
 logger.info(args)
@@ -379,7 +380,7 @@ class SAKTDataset(Dataset):
     
 class LearnNet(nn.Module):
     def __init__(self, modcols, contcols, padvals, extracols, 
-                 device = device, dropout = 0.2):
+                 device = device, dropout = 0.2, model = args.model):
         super(LearnNet, self).__init__()
         
         self.dropout = nn.Dropout(dropout)
@@ -409,7 +410,11 @@ class LearnNet(nn.Module):
         
         LSTM_UNITS = 32 + 32 + 4 + 16 * (2 + 6) + 4 + len(self.contcols)
         
-        self.lstm1 = nn.LSTM(LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
+        if model == 'lstm':
+            self.lstm1 = nn.LSTM(LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
+        if model == 'gru':
+            self.lstm1 = nn.GRU(LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
+            
         self.linear1 = nn.Linear(LSTM_UNITS, LSTM_UNITS//2)
         self.bn0 = nn.BatchNorm1d(num_features=len(self.contcols))
         self.bn1 = nn.BatchNorm1d(num_features=LSTM_UNITS)
@@ -451,7 +456,7 @@ class LearnNet(nn.Module):
         return out
 
 logger.info('Create model and loaders')
-model = LearnNet(MODCOLS, CONTCOLS, PADVALS, EXTRACOLS)
+model = self =  LearnNet(MODCOLS, CONTCOLS, PADVALS, EXTRACOLS)
 model.to(device)
 
 
@@ -539,6 +544,13 @@ for epoch in range(50):
     logger.info(f'Valid AUC Score {auc_score:.5f}')
 
 
+# Ideas:
+# Split tags to separate embeddings
+# Try with a gru instead of an lstm
+# Part corrent for historical 
+# Make the content_user_answer inside the dict (for submission time)
+# Store the mean vals inside pdict for submission time. 
+# Make an embedding out of the count of user answers and the count of correct
 
 
 
