@@ -39,6 +39,106 @@ pd.set_option('display.width', 1000)
 
 logger = get_logger('Train', 'INFO')
 
+# funcs for user stats with loop
+def add_user_feats(df, pdicts, update = True):
+    
+    acsu = np.zeros(len(df), dtype=np.uint32)
+    cu = np.zeros(len(df), dtype=np.uint32)
+    acsb = np.zeros(len(df), dtype=np.uint32)
+    cb = np.zeros(len(df), dtype=np.uint32)
+    cidacsu = np.zeros(len(df), dtype=np.uint32)
+    cidcu = np.zeros(len(df), dtype=np.uint32)
+    #expacsu = np.zeros(len(df), dtype=np.uint32)
+    #expcu = np.zeros(len(df), dtype=np.uint32)
+    #pexpm = np.zeros((len(df), 1), dtype=np.uint8)
+    contid = np.zeros((len(df), 1), dtype=np.uint8)
+    qamat = np.zeros((len(df),2), dtype=np.float16)
+    #partsdict = defaultdict(lambda : {'acsu' : np.zeros(len(df), dtype=np.uint32),
+    #                                  'cu' : np.zeros(len(df), dtype=np.uint32)})
+
+    itercols = ['user_id','answered_correctly', 'part', \
+                    'prior_question_had_explanation', 'prior_question_elapsed_time', 'content_id', \
+                        'task_container_id', 'timestamp', 'content_type_id', 'user_answer']
+    if not update:
+        itercols = [f for f in itercols if f!='answered_correctly']
+    df['prior_question_had_explanation'] = df['prior_question_had_explanation'].fillna(False).astype(np.uint8)
+    
+    for cnt,row in enumerate(tqdm(df[itercols].values, total = df.shape[0]) ):
+        if update:
+            u, yprev, part, pexp, eltim, cid, tcid, tstmp, ctype, ua = row
+        else:
+            u, pexp, eltim, cid, tcid, tstmp, ctype, ua = row
+        
+        if ctype==1:
+            continue
+        
+        
+        bid = bdict[cid]
+        newbid = bid == pdicts['track_b'][u]
+                                 
+        ucid = f'{u}__{cid}'
+        acsu[cnt] = pdicts['answered_correctly_sum_u_dict'][u]                        
+        cu[cnt] = pdicts['count_u_dict'][u]
+        acsb[cnt] = pdicts['answered_correctly_sum_b_dict'][u]
+        cb[cnt] = pdicts['count_b_dict'][u]
+        cidacsu[cnt] = pdicts['content_id_answered_correctly_sum_u_dict'][ucid]
+        cidcu[cnt] = pdicts['content_id_count_u_dict'][ucid]
+        #expacsu[cnt] = pdicts['pexp_answered_correctly_sum_u_dict'][u]
+        #expcu[cnt] = pdicts['pexp_count_u_dict'][u]
+        qamat[cnt] = pdicts['qaRatiocum'][u] / (pdicts['count_u_dict'][u] + 0.01), \
+                pdicts['qaRatiocum'][u] / (pdicts['qaRatioCorrectcum'][u] + 0.01)
+                
+        #partsdict[part]['acsu'][cnt]  = pdicts[f'{part}p_answered_correctly_sum_u_dict'][u]
+        #partsdict[part]['cu'][cnt] = pdicts[f'{part}p_count_u_dict'][u]
+        
+        #for p in range(1,8):
+        #    if p == part: continue
+        #    partsdict[p]['cu'][cnt] = pdicts[f'{p}p_count_u_dict'][u]
+        #    partsdict[p]['acsu'][cnt]  = pdicts[f'{p}p_answered_correctly_sum_u_dict'][u]
+
+        if update:
+            pdicts['count_u_dict'][u] += 1
+            try:
+                pdicts['qaRatioCorrectcum'][u] += pdicts['qaRatio'][(cid, pdicts['qaCorrect'][cid])]
+            except:
+                pdicts['qaRatioCorrectcum'][u] += 1.
+            try:
+                pdicts['qaRatiocum'][u] += pdicts['qaRatio'][(cid, ua)]
+            except:
+                pdicts['qaRatiocum'][u] += 0.1
+                    
+            pdicts['count_c_dict'][cid] += 1
+            #pdicts[f'{part}p_count_u_dict'][u] += 1
+            pdicts['content_id_count_u_dict'][ucid] += 1
+            pdicts['count_b_dict'][u] = 1 if newbid else pdicts['count_b_dict'][u] + 1
+            if newbid : pdicts['answered_correctly_sum_b_dict'][u] = 0
+            if yprev: 
+                pdicts['answered_correctly_sum_u_dict'][u] += 1
+                pdicts['answered_correctly_sum_c_dict'][cid] += 1
+                pdicts['answered_correctly_sum_b_dict'][u] += 1
+                pdicts['content_id_answered_correctly_sum_u_dict'][ucid] += 1
+
+                #pdicts[f'{part}p_answered_correctly_sum_u_dict'][u] += 1
+            #if pexp:
+            #    if yprev: 
+            #        pdicts['pexp_answered_correctly_sum_u_dict'][u] += yprev
+            #    pdicts['pexp_count_u_dict'][u] += 1
+            pdicts['track_b'][u] = bid
+                
+    for t1, (matcu, matascu) in enumerate(zip([cu, cidcu, cb], [acsu,  cidacsu, acsb])):
+        df[f'counts___feat{t1}'] = matcu
+        df[f'avgcorrect___feat{t1}'] =  (matascu / (matcu + 0.001)).astype(np.float16)
+        #gc.collect()
+    df['cid_answered_correctly'] = acsu
+    df[[f'rank_stats_{i}' for i in range(2)]] = qamat
+    
+    #for t, i in enumerate(range(1,8)):  
+    #    df[f'counts___feat{t1+t+1}'] = partsdict[i]['cu']
+    #    df[f'avgcorrect___feat{t1+t+1}'] =  (partsdict[i]['acsu']  / (partsdict[i]['cu'] + 0.001)).astype(np.float16)
+    #    del partsdict[i]
+    
+    return df
+
 device = 'cpu' if platform.system() == 'Darwin' else 'cuda'
 CUT=0
 DIR='val'
@@ -58,6 +158,40 @@ gc.collect()
 
 train = train.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
 valid = valid.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
+
+# Joins questions
+ldf = pd.read_csv('data/lectures.csv')
+ldf.type_of = ldf.type_of.str.replace(' ', '_')
+ldict = ldf.set_index('lecture_id').to_dict()
+lecture_types = [t for t in ldf.type_of.unique() if t!= 'starter']
+
+
+qdf = pd.read_csv('data/questions.csv')
+qdf[[f'tag{i}' for i in range(6)]] =  qdf.tags.fillna('').apply(split_tags).tolist()
+
+bdict = qdf.set_index('question_id')['bundle_id'].to_dict()
+keepcols = ['question_id', 'part', 'bundle_id', 'correct_answer'] + [f'tag{i}' for i in range(6)]
+train = pd.merge(train, qdf[keepcols], left_on = 'content_id', right_on = 'question_id', how = 'left')
+valid = pd.merge(valid, qdf[keepcols], left_on = 'content_id', right_on = 'question_id', how = 'left')
+formatcols =  ['question_id', 'part', 'bundle_id', 'correct_answer', 'user_answer']+ [f'tag{i}' for i in range(6)]
+train[formatcols] = train[formatcols].fillna(0).astype(np.int16)
+valid[formatcols] = valid[formatcols].fillna(0).astype(np.int16)
+
+# How correct is the answer
+def qaRanks(df):
+    aggdf1 = df.groupby(['question_id', 'user_answer', 'correct_answer'])['answered_correctly'].count()
+    aggdf2 = df.groupby(['question_id'])['answered_correctly'].count()
+    aggdf = pd.merge(aggdf1, aggdf2, left_index=True, right_index = True).reset_index()
+    aggdf.columns = ['question_id', 'user_answer', 'correct_answer', 'answcount', 'quescount']
+    aggdf['answerratio'] = (aggdf.answcount / aggdf.quescount).astype(np.float16)
+    rankDf = aggdf.set_index('question_id')[[ 'answerratio', 'answcount']].reset_index()
+    qaRatio = aggdf.set_index(['question_id', 'user_answer']).answerratio.to_dict()
+    qaCorrect = qdf.set_index('question_id').correct_answer.to_dict()
+    return qaRatio, qaCorrect, rankDf
+
+ix = train.content_type_id == False
+qaRatio, qaCorrect, rankDf = qaRanks(train[ix])
+
 
 train['prior_question_had_explanation'] = train['prior_question_had_explanation'].astype(np.float32).fillna(2).astype(np.int8)
 valid['prior_question_had_explanation'] = valid['prior_question_had_explanation'].astype(np.float32).fillna(2).astype(np.int8)
@@ -80,20 +214,39 @@ content_df.iloc[:,1:] = content_df.iloc[:,1:].astype(np.float16)
 train = pd.merge(train, content_df, on=['content_id'], how="left")
 valid = pd.merge(valid, content_df, on=['content_id'], how="left")
 
+
+# user stats features with loops
+pdicts = {'answered_correctly_sum_u_dict' : defaultdict(int),
+          'count_u_dict' : defaultdict(int),
+          'answered_correctly_sum_b_dict' : defaultdict(int),
+          'count_b_dict' : defaultdict(int),
+          'answered_correctly_sum_c_dict' : defaultdict(int),
+          'count_c_dict' : defaultdict(int),
+          'track_b' : defaultdict(int),
+          'content_id_answered_correctly_sum_u_dict' : defaultdict(int),
+          'content_id_count_u_dict': defaultdict(int),
+          'userAvgRatioCum': defaultdict(float),
+          'userRatioCum' : defaultdict(int),
+          
+          'qaRatio' : qaRatio,
+          'qaCorrect': qaCorrect,
+          'qaRatiocum' : defaultdict(int),
+          'qaRatioCorrectcum' : defaultdict(int),
+          
+          'content_id_lag' : defaultdict(int), 
+          'pexp_answered_correctly_sum_u_dict' : defaultdict(int),
+          'pexp_count_u_dict': defaultdict(int)}
+
+#for p in train.part.unique():
+#    pdicts[f'{p}p_answered_correctly_sum_u_dict'] =  defaultdict(int)
+#    pdicts[f'{p}p_count_u_dict'] =  defaultdict(int)
+    
+train = add_user_feats(train, pdicts)
+valid = add_user_feats(valid, pdicts)
+
 # For start off remove lectures
 train = train.loc[train.content_type_id == False].reset_index(drop=True)
 valid = valid.loc[valid.content_type_id == False].reset_index(drop=True)
-
-# Joins questions
-qdf = pd.read_csv('data/questions.csv')
-qdf[[f'tag{i}' for i in range(6)]] =  qdf.tags.fillna('').apply(split_tags).tolist()
-
-keepcols = ['question_id', 'part', 'bundle_id', 'correct_answer'] + [f'tag{i}' for i in range(6)]
-train = pd.merge(train, qdf[keepcols], left_on = 'content_id', right_on = 'question_id', how = 'left')
-valid = pd.merge(valid, qdf[keepcols], left_on = 'content_id', right_on = 'question_id', how = 'left')
-formatcols =  ['question_id', 'part', 'bundle_id', 'correct_answer', 'user_answer']+ [f'tag{i}' for i in range(6)]
-train[formatcols] = train[formatcols].fillna(0).astype(np.int16)
-valid[formatcols] = valid[formatcols].fillna(0).astype(np.int16)
 
 train['content_user_answer']  = train['user_answer'] + 4 * train['content_id'].astype(np.int32)
 valid['content_user_answer']  = valid['user_answer'] + 4 * valid['content_id'].astype(np.int32)
@@ -101,22 +254,33 @@ train['answered_correctly_ct_log'] = np.log1p(train['answered_correctly_ct_c'].f
 valid['answered_correctly_ct_log'] = np.log1p(valid['answered_correctly_ct_c'].fillna(0).astype(np.float32)) - 7.5
 
 
+NORMCOLS = ['counts___feat0', 'counts___feat1', 'counts___feat2', 
+            'cid_answered_correctly']
+meanvals = np.log1p(train[NORMCOLS].fillna(0).astype(np.float32)).mean().values
+train[NORMCOLS] = np.log1p(train[NORMCOLS].fillna(0).astype(np.float32)) - meanvals
+valid[NORMCOLS] = np.log1p(valid[NORMCOLS].fillna(0).astype(np.float32)) - meanvals
+
+
 # Create index for loader
 trnidx = train.reset_index().groupby(['user_id'])['index'].apply(list).to_dict()
 validx = valid.reset_index().groupby(['user_id'])['index'].apply(list).to_dict()
 
+FEATCOLS = ['counts___feat0', 'avgcorrect___feat0', 'counts___feat1', 'avgcorrect___feat1', 
+    'counts___feat2', 'avgcorrect___feat2', 'cid_answered_correctly', 
+    'rank_stats_0', 'rank_stats_1']
 MODCOLS = ['content_id', 'content_type_id', 'prior_question_elapsed_time', \
            'prior_question_had_explanation', 'task_container_id', \
             'timestamp', 'part', 'bundle_id', \
                 'answered_correctly', 'user_answer', 'correct_answer', 'content_user_answer', 
                 'answered_correctly_avg_c', 'answered_correctly_ct_log', 'attempts_avg_c'] \
-            + [f'tag{i}' for i in range(6)]
-NOPAD = ['prior_question_elapsed_time', 'prior_question_had_explanation', \
-             'timestamp', 'content_type_id']
+            + [f'tag{i}' for i in range(6)] + FEATCOLS
 EMBCOLS = ['content_id', 'part', 'bundle_id'] + [f'tag{i}' for i in range(6)]
 TARGETCOLS = [ 'user_answer', 'answered_correctly', 'correct_answer', 'content_user_answer']
+
 CONTCOLS = ['timestamp', 'prior_question_elapsed_time', 'prior_question_had_explanation', \
-            'answered_correctly_avg_c', 'answered_correctly_ct_log', 'attempts_avg_c']
+            'answered_correctly_avg_c', 'answered_correctly_ct_log', 'attempts_avg_c'] + FEATCOLS
+NOPAD = ['prior_question_elapsed_time', 'prior_question_had_explanation', \
+             'timestamp', 'content_type_id'] + CONTCOLS
 PADVALS = train[MODCOLS].max(0) + 1
 PADVALS[NOPAD] = 0
 EXTRACOLS = ['lag_time_cat', 'elapsed_time_cat']
@@ -170,7 +334,7 @@ class SAKTDataset(Dataset):
         # Pull out position of question
         cappos  = useqidx.index(q) + 1
         # Pull out the sequence of questions up to that question
-        useqidx = useqidx[:cappos][-100:]
+        useqidx = useqidx[:cappos][-self.maxseq:]
         umat = self.dfmat[useqidx].astype(np.float32)
         
         if umat.shape[0] < self.maxseq:
@@ -244,13 +408,13 @@ class LearnNet(nn.Module):
         
         # Categroical embeddings
         embcat = torch.cat([
-            self.emb_content_id(x[:,:, self.modcols.index('content_id')].long()),
-            self.emb_bundle_id(x[:,:, self.modcols.index('bundle_id')].long()),
-            self.emb_cont_user_answer(x[:,:, self.modcols.index('content_user_answer')].long()),
-            self.emb_part(x[:,:, self.modcols.index('part')].long()), 
+            self.emb_content_id(  x[:,:, self.modcols.index('content_id')].long()  ),
+            self.emb_bundle_id(  x[:,:, self.modcols.index('bundle_id')].long()  ),
+            self.emb_cont_user_answer(  x[:,:, self.modcols.index('content_user_answer')].long()  ),
+            self.emb_part(  x[:,:, self.modcols.index('part')].long()  ), 
             (self.emb_tag(x[:,:, self.tag_idx].long()) * self.tag_wts).sum(2),
-            self.emb_lag_time(x[:,:, self.modcols.index('lag_time_cat')].long()), 
-            self.emb_elapsed_time(x[:,:, self.modcols.index('elapsed_time_cat')].long())
+            self.emb_lag_time(   x[:,:, self.modcols.index('lag_time_cat')].long()   ), 
+            self.emb_elapsed_time(  x[:,:, self.modcols.index('elapsed_time_cat')].long()  )
             ], 2)
         embcat = self.embedding_dropout(embcat)
         
