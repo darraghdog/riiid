@@ -324,7 +324,7 @@ class SAKTDataset(Dataset):
         self.quidx = self.data.query('base==0').reset_index()[['user_id', 'index']].values
         
         if basedf is None:
-            self.quidx = self.quidx[np.random.choice(self.quidx.shape[0], 4*10**6, replace=False)]
+            self.quidx = self.quidx[np.random.choice(self.quidx.shape[0], 2*10**6, replace=False)]
         
         self.dfmat = self.data[self.cols].values
         self.padmat = self.padvals[self.cols].values
@@ -526,7 +526,7 @@ for epoch in range(50):
         optimizer.zero_grad()
         x, m, y = batch
         x = x.to(device, dtype=torch.float)
-        m = m.to(device, dtype=torch.float)
+        m = m.to(device, dtype=torch.long)
         y = y.to(device, dtype=torch.float)
         x = torch.autograd.Variable(x, requires_grad=True)
         y = torch.autograd.Variable(y)
@@ -563,10 +563,11 @@ for epoch in range(50):
     y_act = valid['answered_correctly'].values
     model.eval()
     for step, batch in pbarval:
-        x, y = batch
+        x, m, y = batch
         x = x.to(device, dtype=torch.float)
+        m = m.to(device, dtype=torch.long)
         with torch.no_grad():
-            out = model(x)
+            out = model(x, m)
         y_predls.append(out.detach().cpu().numpy())
         
     y_pred = np.concatenate(y_predls)
