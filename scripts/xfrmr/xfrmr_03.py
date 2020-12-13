@@ -9,6 +9,7 @@ os.chdir(PATH)
 sys.path.append(PATH)
 import pandas as pd
 import numpy as np
+import argparse
 import gc
 from sklearn.metrics import roc_auc_score
 from collections import defaultdict, OrderedDict
@@ -138,6 +139,19 @@ def add_user_feats(df, pdicts, update = True):
     #    del partsdict[i]
     
     return df
+
+DECAY = 0.0
+logger.info('Load args')
+parser = argparse.ArgumentParser("PyTorch Xview Pipeline")
+arg = parser.add_argument
+arg('--workers', type=int, default=8, help='number of cpu threads to use')
+arg('--batchsize', type=int, default=1024)
+arg('--lr', type=float, default=0.001)
+arg('--epochs', type=int, default=20)
+arg('--maxseq', type=int, default=100)
+arg('--label-smoothing', type=float, default=0.01)
+args = parser.parse_args()
+logger.info(args)
 
 device = 'cpu' if platform.system() == 'Darwin' else 'cuda'
 CUT=0
@@ -306,10 +320,9 @@ class SAKTDataset(Dataset):
             .groupby(['user_id'])['index'].apply(list).to_dict()
         self.quidx = self.data.query('base==0').reset_index()[['user_id', 'index']].values
         
-        if basedf is None:
-            self.quidx = self.quidx[np.random.choice(self.quidx.shape[0], 4*10**6, replace=False)]
-
-            
+        #if basedf is None:
+        #    self.quidx = self.quidx[np.random.choice(self.quidx.shape[0], 4*10**6, replace=False)]
+        
         self.dfmat = self.data[self.cols].values
         self.padmat = self.padvals[self.cols].values
         self.users = self.data.user_id.unique() 
@@ -435,15 +448,14 @@ class LearnNet(nn.Module):
         return out
 
 logger.info('Create model and loaders')
-model = self =  LearnNet(MODCOLS, CONTCOLS, PADVALS, EXTRACOLS)
+model = LearnNet(MODCOLS, CONTCOLS, PADVALS, EXTRACOLS)
 model.to(device)
 
-LR = 0.001
-DECAY = 0.0
+
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
-trndataset = self = SAKTDataset(train, None, MODCOLS, PADVALS, EXTRACOLS)
+trndataset = SAKTDataset(train, None, MODCOLS, PADVALS, EXTRACOLS)
 valdataset = SAKTDataset(valid, train, MODCOLS, PADVALS, EXTRACOLS)
-loaderargs = {'num_workers' : 8, 'batch_size' : 256*8}
+loaderargs = {'num_workers' : args.workers, 'batch_size' : args.batchsize}
 trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
 valloader = DataLoader(valdataset, shuffle=False, **loaderargs)
 # x, y = next(iter(trnloader))
@@ -453,7 +465,7 @@ criterion =  nn.BCEWithLogitsLoss()
 param_optimizer = list(model.named_parameters())
 no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
 plist = [ {'params': [p for n, p in param_optimizer] } ]
-optimizer = torch.optim.Adam(plist, lr=LR)
+optimizer = torch.optim.Adam(plist, lr=args.lr)
 
 
 if device != 'cpu':
