@@ -407,7 +407,7 @@ class LearnNet(nn.Module):
         
         self.embedding_dropout = SpatialDropout(dropout)
         
-        LSTM_UNITS = 32 + 32 + 4 + 16 * 3 + 4 + len(self.contcols)
+        LSTM_UNITS = 32 + 32 + 4 + 16 * (2 + 6) + 4 + len(self.contcols)
         
         self.lstm1 = nn.LSTM(LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
         self.linear1 = nn.Linear(LSTM_UNITS, LSTM_UNITS//2)
@@ -425,10 +425,13 @@ class LearnNet(nn.Module):
             self.emb_bundle_id(  x[:,:, self.modcols.index('bundle_id')].long()  ),
             self.emb_cont_user_answer(  x[:,:, self.modcols.index('content_user_answer')].long()  ),
             self.emb_part(  x[:,:, self.modcols.index('part')].long()  ), 
-            (self.emb_tag(x[:,:, self.tag_idx].long()) * self.tag_wts).sum(2),
+            
+            #(self.emb_tag(x[:,:, self.tag_idx].long()) * self.tag_wts).sum(2),
             self.emb_lag_time(   x[:,:, self.modcols.index('lag_time_cat')].long()   ), 
             self.emb_elapsed_time(  x[:,:, self.modcols.index('elapsed_time_cat')].long()  )
-            ], 2)
+            ] + 
+            [self.emb_tag(x[:,:, ii.item()].long()) for ii in torch.where(self.tag_idx)[0]]
+            , 2)
         embcat = self.embedding_dropout(embcat)
         
         ## Continuous
