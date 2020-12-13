@@ -31,7 +31,7 @@ from torch.cuda.amp import autocast
 from sklearn.metrics import log_loss
 from tools.utils import get_logger, SpatialDropout, split_tags
 from tools.config import load_config
-
+from transformers import XLMModel, XLMConfig
 
 warnings.filterwarnings("ignore")
 pd.set_option('display.max_columns', None)
@@ -148,7 +148,9 @@ arg('--workers', type=int, default=8, help='number of cpu threads to use')
 arg('--batchsize', type=int, default=1024)
 arg('--lr', type=float, default=0.001)
 arg('--epochs', type=int, default=20)
-arg('--maxseq', type=int, default=100)
+arg('--maxseq', type=int, default=128)
+arg('--n_layers', type=int, default=2)
+arg('--n_heads', type=int, default=8)
 arg('--model', type=str, default='lstm')
 arg('--label-smoothing', type=float, default=0.01)
 args = parser.parse_args()
@@ -351,7 +353,8 @@ class SAKTDataset(Dataset):
         useqidx = useqidx[:cappos][-self.maxseq:]
         umat = self.dfmat[useqidx].astype(np.float32)
         
-        if umat.shape[0] < self.maxseq:
+        useqlen = umat.shape[0]
+        if useqlen < self.maxseq:
             padlen = self.maxseq - umat.shape[0] 
             upadmat = np.tile(self.padmat, (padlen, 1))
             umat = np.concatenate((upadmat, umat), 0)
@@ -376,11 +379,15 @@ class SAKTDataset(Dataset):
         umat = torch.tensor(umat).float()
         target = torch.tensor(target)
         
-        return umat, target
+        # Create mask
+        umask = torch.zeros(umat.shape[0], dtype=torch.int8)
+        umask[-useqlen:] = 1
+        
+        return umat, umask, target
     
 class LearnNet(nn.Module):
     def __init__(self, modcols, contcols, padvals, extracols, 
-                 device = device, dropout = 0.2, model = args.model):
+                 device = device, dropout = 0.2, model_type = args.model):
         super(LearnNet, self).__init__()
         
         self.dropout = nn.Dropout(dropout)
@@ -390,6 +397,7 @@ class LearnNet(nn.Module):
         self.modcols = modcols + extracols
         self.contcols = contcols
         self.embcols = ['content_id', 'part']
+        self.model_type = model_type
         
         self.emb_content_id = nn.Embedding(13526, 32)
         self.emb_bundle_id = nn.Embedding(13526, 32)
@@ -397,7 +405,7 @@ class LearnNet(nn.Module):
         self.emb_tag= nn.Embedding(190, 16)
         self.emb_lag_time = nn.Embedding(301, 16)
         self.emb_elapsed_time = nn.Embedding(301, 16)
-        self.emb_cont_user_answer = nn.Embedding(13526 * 4, 4)
+        self.emb_cont_user_answer = nn.Embedding(13526 * 4, 5)
             
         self.tag_idx = torch.tensor(['tag' in i for i in self.modcols])
         self.tag_wts = torch.ones((sum(self.tag_idx), 16))  / sum(self.tag_idx)
@@ -408,12 +416,20 @@ class LearnNet(nn.Module):
         
         self.embedding_dropout = SpatialDropout(dropout)
         
-        LSTM_UNITS = 32 + 32 + 4 + 16 * (2 + 6) + 4 + len(self.contcols)
+        LSTM_UNITS = 32 + 32 + 4 + 16 * (2 + 1) + 5 + len(self.contcols)
         
-        if model == 'lstm':
-            self.lstm1 = nn.LSTM(LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
-        if model == 'gru':
-            self.lstm1 = nn.GRU(LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
+        if self.model_type == 'lstm':
+            self.seqnet = nn.LSTM(LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
+        if self.model_type == 'gru':
+            self.seqnet = nn.GRU(LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
+        if self.model_type == 'xlm':
+            self.xcfg = XLMConfig()
+            self.xcfg.causal = True
+            self.xcfg.emb_dim = LSTM_UNITS
+            self.xcfg.max_position_embeddings = args.maxseq
+            self.xcfg.n_layers = args.n_layers
+            self.xcfg.n_heads = args.n_heads
+            self.seqnet  = XLMModel(self.xcfg)
             
         self.linear1 = nn.Linear(LSTM_UNITS, LSTM_UNITS//2)
         self.bn0 = nn.BatchNorm1d(num_features=len(self.contcols))
@@ -422,7 +438,7 @@ class LearnNet(nn.Module):
         
         self.linear_out = nn.Linear(LSTM_UNITS//2, 1)
         
-    def forward(self, x):
+    def forward(self, x, m = None):
         
         # Categroical embeddings
         embcat = torch.cat([
@@ -444,9 +460,13 @@ class LearnNet(nn.Module):
         # Weighted sum of tags - hopefully good weights are learnt
         xinp = torch.cat([embcat, contmat], 2)
         
-        h_lstm1, _ = self.lstm1(xinp)
+        if self.model_type == 'xlm':
+            inputs = {'input_ids': None, 'inputs_embeds': xinp, 'attention_mask': m}
+            hidden, = self.seqnet(**inputs)
+        else:
+            hidden, _ = self.seqnet(xinp)
         # Take last hidden unit
-        hidden = self.dropout( self.bn1(h_lstm1[:,-1,:]) )
+        hidden = self.dropout( self.bn1(hidden[:,-1,:]) )
         hidden  = F.relu(self.linear1(hidden))
         hidden = self.dropout(self.bn2(hidden))
         out = self.linear_out(hidden).flatten()
@@ -454,17 +474,30 @@ class LearnNet(nn.Module):
         return out
 
 logger.info('Create model and loaders')
-model = self =  LearnNet(MODCOLS, CONTCOLS, PADVALS, EXTRACOLS)
+model = LearnNet(MODCOLS, CONTCOLS, PADVALS, EXTRACOLS)
 model.to(device)
 
-
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
-trndataset = SAKTDataset(train, None, MODCOLS, PADVALS, EXTRACOLS)
-valdataset = SAKTDataset(valid, train, MODCOLS, PADVALS, EXTRACOLS)
+trndataset = SAKTDataset(train, None, MODCOLS, PADVALS, EXTRACOLS, maxseq = args.maxseq)
+valdataset = SAKTDataset(valid, train, MODCOLS, PADVALS, EXTRACOLS, maxseq = args.maxseq)
 loaderargs = {'num_workers' : args.workers, 'batch_size' : args.batchsize}
 trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
 valloader = DataLoader(valdataset, shuffle=False, **loaderargs)
-# x, y = next(iter(trnloader))
+x, m, y = next(iter(trnloader))
+
+'''
+from transformers import XLMTokenizer, XLMModel
+tokenizer = XLMTokenizer.from_pretrained('xlm-mlm-en-2048')
+model = XLMModel.from_pretrained("xlm-clm-ende-1024")
+inputs = tokenizer("Hello, my dog is cute", return_tensors="pt")
+# {'input_ids': tensor([[   0, 6496,   15,   52, 2232,   26, 9684,    1]]),
+# 'token_type_ids': tensor([[0, 0, 0, 0, 0, 0, 0, 0]]), 
+#'attention_mask': tensor([[1, 1, 1, 1, 1, 1, 1, 1]])}
+outputs = model(**inputs)
+'''
+
+
+
 
 criterion =  nn.BCEWithLogitsLoss()
 
@@ -493,13 +526,14 @@ for epoch in range(50):
     for step, batch in pbartrn:
 
         optimizer.zero_grad()
-        x, y = batch
+        x, m, y = batch
         x = x.to(device, dtype=torch.float)
+        m = m.to(device, dtype=torch.float)
         y = y.to(device, dtype=torch.float)
         x = torch.autograd.Variable(x, requires_grad=True)
         y = torch.autograd.Variable(y)
         
-        out = model(x)
+        out = model(x, m)
         loss = criterion(out, y)
         loss.backward()
         optimizer.step()
