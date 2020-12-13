@@ -323,8 +323,8 @@ class SAKTDataset(Dataset):
             .groupby(['user_id'])['index'].apply(list).to_dict()
         self.quidx = self.data.query('base==0').reset_index()[['user_id', 'index']].values
         
-        if basedf is None:
-            self.quidx = self.quidx[np.random.choice(self.quidx.shape[0], 2*10**6, replace=False)]
+        #if basedf is None:
+        #    self.quidx = self.quidx[np.random.choice(self.quidx.shape[0], 2*10**6, replace=False)]
         
         self.dfmat = self.data[self.cols].values
         self.padmat = self.padvals[self.cols].values
@@ -475,11 +475,11 @@ class LearnNet(nn.Module):
         return out
 
 logger.info('Create model and loaders')
-model = LearnNet(MODCOLS, CONTCOLS, PADVALS, EXTRACOLS)
+model = self = LearnNet(MODCOLS, CONTCOLS, PADVALS, EXTRACOLS)
 model.to(device)
 
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
-trndataset = SAKTDataset(train, None, MODCOLS, PADVALS, EXTRACOLS, maxseq = args.maxseq)
+trndataset = self = SAKTDataset(train, None, MODCOLS, PADVALS, EXTRACOLS, maxseq = args.maxseq)
 valdataset = SAKTDataset(valid, train, MODCOLS, PADVALS, EXTRACOLS, maxseq = args.maxseq)
 loaderargs = {'num_workers' : args.workers, 'batch_size' : args.batchsize}
 trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
