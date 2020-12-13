@@ -462,7 +462,7 @@ class LearnNet(nn.Module):
         
         if self.model_type == 'xlm':
             inputs = {'input_ids': None, 'inputs_embeds': xinp, 'attention_mask': m}
-            hidden, = self.seqnet(**inputs)
+            hidden = self.seqnet(**inputs)[0]
         else:
             hidden, _ = self.seqnet(xinp)
         # Take last hidden unit
