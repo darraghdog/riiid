@@ -336,6 +336,9 @@ class SAKTDataset(Dataset):
         self.padtarget = np.array([self.padvals[self.targetidx].tolist()])
         self.yidx = self.cols.index('answered_correctly') 
         self.timecols = [self.cols.index(c) for c in ['timestamp','prior_question_elapsed_time']]
+        self.lagbins = np.concatenate([np.linspace(*a).astype(np.int32) for a in [(0, 5, 6), (10, 100, 20),(120, 600, 40), 
+                              (660, 1440, 14), (1960, 10800, 18), (10800, 259200, 30), 
+                              (518400, 2592000, 10), (2592000, 31104000, 22), (31104000, 311040000, 10)]])
     
     def __len__(self):
         
@@ -364,7 +367,10 @@ class SAKTDataset(Dataset):
         umat[:, self.timecols[0]][0] = 0
         
         # Time embeddings
-        timeemb = (umat[:, self.timecols] / 1000).clip(0, 300).astype(np.int16)
+        timeemb =   np.stack(( \
+                    np.digitize(umat[:, self.timecols[0]]/ 1000, self.lagbins), 
+                    (umat[:, self.timecols[1]] / 1000).clip(0, 300))).round()
+        timeemb = np.transpose(timeemb, (1,0))
         umat = np.concatenate((umat, timeemb), 1)
         
         # preprocess continuous time - try log scale and roughly center it
@@ -403,7 +409,7 @@ class LearnNet(nn.Module):
         self.emb_bundle_id = nn.Embedding(13526, 32)
         self.emb_part = nn.Embedding(9, 4)
         self.emb_tag= nn.Embedding(190, 16)
-        self.emb_lag_time = nn.Embedding(301, 16)
+        self.emb_lag_time = nn.Embedding(180, 16)
         self.emb_elapsed_time = nn.Embedding(301, 16)
         self.emb_cont_user_answer = nn.Embedding(13526 * 4, 5)
             
@@ -484,7 +490,7 @@ model = self = LearnNet(MODCOLS, CONTCOLS, PADVALS, EXTRACOLS)
 model.to(device)
 
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
-trndataset = self = SAKTDataset(train, None, MODCOLS, PADVALS, EXTRACOLS, maxseq = args.maxseq)
+trndataset = SAKTDataset(train, None, MODCOLS, PADVALS, EXTRACOLS, maxseq = args.maxseq)
 valdataset = SAKTDataset(valid, train, MODCOLS, PADVALS, EXTRACOLS, maxseq = args.maxseq)
 loaderargs = {'num_workers' : args.workers, 'batch_size' : args.batchsize}
 trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
