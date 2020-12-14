@@ -411,6 +411,8 @@ class LearnNet(nn.Module):
         self.tag_wts = torch.ones((sum(self.tag_idx), 16))  / sum(self.tag_idx)
         self.tag_wts = nn.Parameter(self.tag_wts)
         self.tag_wts.requires_grad = True
+        self.cont_wts = nn.Parameter( torch.ones(len(self.contcols)) )
+        self.cont_wts.requires_grad = True
         
         self.cont_idx = [self.modcols.index(c) for c in self.contcols]
         
@@ -429,6 +431,7 @@ class LearnNet(nn.Module):
             self.xcfg.max_position_embeddings = args.maxseq
             self.xcfg.n_layers = args.n_layers
             self.xcfg.n_heads = args.n_heads
+            self.xcfg.return_dict = False
             self.seqnet  = XLMModel(self.xcfg)
             
         self.linear1 = nn.Linear(LSTM_UNITS, LSTM_UNITS//2)
@@ -456,13 +459,15 @@ class LearnNet(nn.Module):
         ## Continuous
         contmat  = x[:,:, self.cont_idx]
         contmat = self.bn0(contmat.permute(0,2,1)) .permute(0,2,1)
+        contmat = contmat * self.cont_wts
         
         # Weighted sum of tags - hopefully good weights are learnt
         xinp = torch.cat([embcat, contmat], 2)
         
         if self.model_type == 'xlm':
+            xinp = self.linearx(xinp)
             inputs = {'input_ids': None, 'inputs_embeds': xinp, 'attention_mask': m}
-            hidden = self.seqnet(**inputs)[0]
+            hidden = self.seqnet(**inputs)
         else:
             hidden, _ = self.seqnet(xinp)
         # Take last hidden unit
