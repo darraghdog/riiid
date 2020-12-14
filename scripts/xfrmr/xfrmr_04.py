@@ -438,9 +438,13 @@ class LearnNet(nn.Module):
         LSTM_UNITS = hidden
         
         if self.model_type == 'lstm':
-            self.seqnet = nn.LSTM(IN_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
+            self.seqnet1 = nn.LSTM(IN_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
+            if args.n_layers==2:
+                self.seqnet2 = nn.LSTM(LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
         if self.model_type == 'gru':
-            self.seqnet = nn.GRU(IN_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
+            self.seqnet1 = nn.GRU(IN_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
+            if args.n_layers==2:
+                self.seqnet2 = nn.GRU(LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
         if self.model_type == 'xlm':
             self.xcfg = XLMConfig()
             self.xcfg.causal = True
@@ -452,11 +456,16 @@ class LearnNet(nn.Module):
             self.seqnet  = XLMModel(self.xcfg)
             
         self.linear1 = nn.Linear(LSTM_UNITS, LSTM_UNITS//2)
+        if args.n_layers==2:
+            self.linear2 = nn.Linear(LSTM_UNITS, LSTM_UNITS//2)
+            self.linear_out = nn.Linear(LSTM_UNITS, 1)
+        else:
+            self.linear_out = nn.Linear(LSTM_UNITS//2, 1)
         self.bn0 = nn.BatchNorm1d(num_features=len(self.contcols))
         self.bn1 = nn.BatchNorm1d(num_features=LSTM_UNITS)
         self.bn2 = nn.BatchNorm1d(num_features=LSTM_UNITS//2)
         
-        self.linear_out = nn.Linear(LSTM_UNITS//2, 1)
+        
         
     def forward(self, x, m = None):
         
@@ -486,15 +495,26 @@ class LearnNet(nn.Module):
             xinp = self.linearx(xinp)
             inputs = {'input_ids': None, 'inputs_embeds': xinp, 'attention_mask': m}
             hidden = self.seqnet(**inputs)
+            hidden = self.dropout( self.bn1( hidden[:,-1,:] ) )
         else:
-            hidden, _ = self.seqnet(xinp)
-            
-        # Take last hidden unit
-        hidden = hidden[:,-1,:]
-        hidden = self.dropout( self.bn1( hidden) )
+            hidden, _ = self.seqnet1(xinp)
+            # Take last hidden unit
+            if args.n_layers==2:
+                hidden2, _ = self.seqnet2(hidden)
+                hidden2 = self.dropout( self.bn1( hidden2[:,-1,:] ) )
+                hidden = self.dropout( self.bn1( hidden [:,-1,:]) )
+            else:
+                hidden = self.dropout( self.bn1( hidden[:,-1,:] ) )
+
         hidden  = F.relu(self.linear1(hidden))
         hidden = self.dropout(self.bn2(hidden))
-        out = self.linear_out(hidden).flatten()
+        if args.n_layers==2:
+            hidden2  = F.relu(self.linear2(hidden2))
+            hidden2 = self.dropout(self.bn2(hidden2))
+            hidden = torch.cat((hidden, hidden2), 1)
+            out = self.linear_out(hidden).flatten()
+        else:
+            out = self.linear_out(hidden).flatten()
         
         return out
 
@@ -565,7 +585,7 @@ for epoch in range(50):
         optimizer.step()
         '''
         with autocast():
-            out = model(x)
+            out = model(x, m)
             loss = criterion(out, y)
         if device != 'cpu':
             scaler.scale(loss).backward()
