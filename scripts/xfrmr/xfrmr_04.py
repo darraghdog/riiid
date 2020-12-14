@@ -272,17 +272,16 @@ train['answered_correctly_ct_log'] = np.log1p(train['answered_correctly_ct_c'].f
 valid['answered_correctly_ct_log'] = np.log1p(valid['answered_correctly_ct_c'].fillna(0).astype(np.float32)) - 7.5
 
 
+## Create index for loader
+#trnidx = train.reset_index().groupby(['user_id'])['index'].apply(list).to_dict()
+#validx = valid.reset_index().groupby(['user_id'])['index'].apply(list).to_dict()
+
 NORMCOLS = ['counts___feat0', 'counts___feat1', 'counts___feat2', 
             'cid_answered_correctly']
 meanvals = np.log1p(train[NORMCOLS].fillna(0).astype(np.float32)).mean().values
-train[NORMCOLS] = np.log1p(train[NORMCOLS].fillna(0).astype(np.float32)) - meanvals
-valid[NORMCOLS] = np.log1p(valid[NORMCOLS].fillna(0).astype(np.float32)) - meanvals
-
-
-# Create index for loader
-trnidx = train.reset_index().groupby(['user_id'])['index'].apply(list).to_dict()
-validx = valid.reset_index().groupby(['user_id'])['index'].apply(list).to_dict()
-
+pdicts['meanvals'] = meanvals
+#train[NORMCOLS] = np.log1p(train[NORMCOLS].fillna(0).astype(np.float32)) - meanvals
+#valid[NORMCOLS] = np.log1p(valid[NORMCOLS].fillna(0).astype(np.float32)) - meanvals
 FEATCOLS = ['counts___feat0', 'avgcorrect___feat0', 'counts___feat1', 'avgcorrect___feat1', 
     'counts___feat2', 'avgcorrect___feat2', 'cid_answered_correctly', 
     'rank_stats_0', 'rank_stats_1']
@@ -301,13 +300,13 @@ NOPAD = ['prior_question_elapsed_time', 'prior_question_had_explanation', \
              'timestamp', 'content_type_id'] + CONTCOLS
 PADVALS = train[MODCOLS].max(0) + 1
 PADVALS[NOPAD] = 0
-EXTRACOLS = ['lag_time_cat',  'elapsed_time_cat']
+EXTRACOLS = ['lag_time_cat',  'elapsed_time_cat', 'question_seen_cat']
 #self = SAKTDataset(train, MODCOLS, PADVALS)
 
 
 class SAKTDataset(Dataset):
-    def __init__(self, data, basedf, cols, padvals, extracols, 
-                 maxseq = args.maxseq, has_target = True): 
+    def __init__(self, data, basedf, cols, padvals, extracols, normcols, 
+                 maxseq = args.maxseq, normvals = meanvals, has_target = True): 
         super(SAKTDataset, self).__init__()
         
         self.cols = cols
@@ -323,7 +322,8 @@ class SAKTDataset(Dataset):
         self.uidx = self.data.reset_index()\
             .groupby(['user_id'])['index'].apply(list).to_dict()
         self.quidx = self.data.query('base==0').reset_index()[['user_id', 'index']].values
-        
+        self.normvals = meanvals
+        self.normcols = [self.cols.index(c) for c in normcols]
         #if basedf is None:
         #    self.quidx = self.quidx[np.random.choice(self.quidx.shape[0], 2*10**6, replace=False)]
         
@@ -366,10 +366,6 @@ class SAKTDataset(Dataset):
         # convert time to lag
         umat[:, self.timecols[0]][1:] = umat[:, self.timecols[0]][1:] - umat[:, self.timecols[0]][:-1]
         umat[:, self.timecols[0]][0] = 0
-        # make lag 1 to 5
-        lagmat = np.transpose(np.stack( \
-                    np.concatenate((umat[:, self.timecols[0]][l:], np.ones(l)*10**8)) \
-                        for l in range(1, 5)))
         
         # Time embeddings
         timeemb =   np.stack(( \
@@ -377,6 +373,14 @@ class SAKTDataset(Dataset):
                     (umat[:, self.timecols[1]] / 1000).clip(0, 300))).round()
         timeemb = np.transpose(timeemb, (1,0))
         umat = np.concatenate((umat, timeemb), 1)
+        
+        # Create question seen catagorical
+        qseen = (umat[:, self.cols.index('counts___feat1')].clip(0,6) * 10 + \
+                 (umat[:, self.cols.index('avgcorrect___feat1')] *10).round(1))[:, np.newaxis]
+        umat = np.concatenate((umat, qseen), 1)
+        
+        # Normalise the continuous count cols
+        umat[:,self.normcols] = np.log1p(umat[:,self.normcols]) - self.normvals
         
         # preprocess continuous time - try log scale and roughly center it
         umat[:, self.timecols] = np.log10( 1.+ umat[:, self.timecols] / (60 * 1000) ) 
@@ -416,7 +420,8 @@ class LearnNet(nn.Module):
         self.emb_tag= nn.Embedding(190, 16)
         self.emb_lag_time = nn.Embedding(301, 16)
         self.emb_elapsed_time = nn.Embedding(301, 16)
-        self.emb_cont_user_answer = nn.Embedding(13526 * 4, 5)
+        self.emb_cont_user_answer = nn.Embedding(13526 * 4, 4)
+        self.emb_ques_seen = nn.Embedding(71, 4)
             
         self.tag_idx = torch.tensor(['tag' in i for i in self.modcols])
         self.tag_wts = torch.ones((sum(self.tag_idx), 16))  / sum(self.tag_idx)
@@ -429,7 +434,7 @@ class LearnNet(nn.Module):
         
         self.embedding_dropout = SpatialDropout(dropout)
         
-        IN_UNITS = 32 + 32 + 4 + 16 * (2 + 1) + 5 + len(self.contcols)
+        IN_UNITS = 32 + 32 + 4 + 16 * (2 + 1) + 4 + 4 + len(self.contcols)
         LSTM_UNITS = hidden
         
         if self.model_type == 'lstm':
@@ -462,6 +467,7 @@ class LearnNet(nn.Module):
             self.emb_cont_user_answer(  x[:,:, self.modcols.index('content_user_answer')].long()  ),
             self.emb_part(  x[:,:, self.modcols.index('part')].long()  ), 
             (self.emb_tag(x[:,:, self.tag_idx].long()) * self.tag_wts).sum(2),
+            self.emb_ques_seen(   x[:,:, self.modcols.index('question_seen_cat')].long()   ), 
             self.emb_lag_time(   x[:,:, self.modcols.index('lag_time_cat')].long()   ), 
             self.emb_elapsed_time(  x[:,:, self.modcols.index('elapsed_time_cat')].long()  )
             ] #+ [self.emb_tag(x[:,:, ii.item()].long()) for ii in torch.where(self.tag_idx)[0]]
@@ -482,6 +488,7 @@ class LearnNet(nn.Module):
             hidden = self.seqnet(**inputs)
         else:
             hidden, _ = self.seqnet(xinp)
+            
         # Take last hidden unit
         hidden = hidden[:,-1,:]
         hidden = self.dropout( self.bn1( hidden) )
@@ -498,8 +505,8 @@ torch.save(model.state_dict(), 'tmp.bin')
 
 
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
-trndataset = self = SAKTDataset(train, None, MODCOLS, PADVALS, EXTRACOLS, maxseq = args.maxseq)
-valdataset = SAKTDataset(valid, train, MODCOLS, PADVALS, EXTRACOLS, maxseq = args.maxseq)
+trndataset = self = SAKTDataset(train, None, MODCOLS, PADVALS, EXTRACOLS, NORMCOLS , maxseq = args.maxseq)
+valdataset = SAKTDataset(valid, train, MODCOLS, PADVALS, EXTRACOLS, NORMCOLS , maxseq = args.maxseq)
 loaderargs = {'num_workers' : args.workers, 'batch_size' : args.batchsize}
 trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
 valloader = DataLoader(valdataset, shuffle=False, **loaderargs)
