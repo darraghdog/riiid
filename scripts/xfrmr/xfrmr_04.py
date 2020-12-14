@@ -494,6 +494,8 @@ class LearnNet(nn.Module):
 logger.info('Create model and loaders')
 model = self = LearnNet(MODCOLS, CONTCOLS, PADVALS, EXTRACOLS)
 model.to(device)
+torch.save(model.state_dict(), 'tmp.bin')
+
 
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
 trndataset = self = SAKTDataset(train, None, MODCOLS, PADVALS, EXTRACOLS, maxseq = args.maxseq)
@@ -529,6 +531,8 @@ if device != 'cpu':
 logger.info('Start training')
 best_val_loss = 100.
 trn_lossls = []
+predls = []
+bags = 4
 for epoch in range(50):
     for param in model.parameters():
         param.requires_grad = True
@@ -588,8 +592,11 @@ for epoch in range(50):
         y_predls.append(out.detach().cpu().numpy())
         
     y_pred = np.concatenate(y_predls)
+    predls.append(y_pred)
     auc_score = roc_auc_score(y_act, y_pred )
     logger.info(f'Valid AUC Score {auc_score:.5f}')
+    auc_score = roc_auc_score(y_act, sum(predls[-bags:]) )
+    logger.info(f'Bagged valid AUC Score {auc_score:.5f}')
 
 
 # Ideas:
