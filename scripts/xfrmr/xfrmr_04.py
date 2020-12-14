@@ -301,7 +301,7 @@ NOPAD = ['prior_question_elapsed_time', 'prior_question_had_explanation', \
              'timestamp', 'content_type_id'] + CONTCOLS
 PADVALS = train[MODCOLS].max(0) + 1
 PADVALS[NOPAD] = 0
-EXTRACOLS = ['lag_time_cat',  'elapsed_time_cat']
+EXTRACOLS = ['lag_time_cat',  'elapsed_time_cat', 'lag_time_cat1', 'lag_time_cat2', 'lag_time_cat3', 'lag_time_cat4']
 #self = SAKTDataset(train, MODCOLS, PADVALS)
 
 
@@ -366,17 +366,15 @@ class SAKTDataset(Dataset):
         # convert time to lag
         umat[:, self.timecols[0]][1:] = umat[:, self.timecols[0]][1:] - umat[:, self.timecols[0]][:-1]
         umat[:, self.timecols[0]][0] = 0
-        # make lag 1 to 5
-        lagmat = np.transpose(np.stack( \
-                    np.concatenate((umat[:, self.timecols[0]][l:], np.ones(l)*10**8)) \
-                        for l in range(1, 5)))
         
         # Time embeddings
-        timeemb =   np.stack(( \
-                    np.digitize(umat[:, self.timecols[0]]/ 1000, self.lagbins), 
-                    (umat[:, self.timecols[1]] / 1000).clip(0, 300))).round()
+        timeemb0 = np.digitize(umat[:, self.timecols[0]]/ 1000, self.lagbins)
+        lagmat = np.transpose(np.stack( \
+                    np.concatenate((timeemb0[l:], np.ones(l)*300)) \
+                            for l in range(1, 5)))
+        timeemb =   np.stack(( timeemb0, (umat[:, self.timecols[1]] / 1000).clip(0, 300))).round()
         timeemb = np.transpose(timeemb, (1,0))
-        umat = np.concatenate((umat, timeemb), 1)
+        umat = np.concatenate((umat, timeemb, lagmat), 1)
         
         # preprocess continuous time - try log scale and roughly center it
         umat[:, self.timecols] = np.log10( 1.+ umat[:, self.timecols] / (60 * 1000) ) 
@@ -414,7 +412,7 @@ class LearnNet(nn.Module):
         self.emb_bundle_id = nn.Embedding(13526, 32)
         self.emb_part = nn.Embedding(9, 4)
         self.emb_tag= nn.Embedding(190, 16)
-        self.emb_lag_time = nn.Embedding(301, 16)
+        self.emb_lag_time = nn.Embedding(301, 8)
         self.emb_elapsed_time = nn.Embedding(301, 16)
         self.emb_cont_user_answer = nn.Embedding(13526 * 4, 5)
             
@@ -429,7 +427,7 @@ class LearnNet(nn.Module):
         
         self.embedding_dropout = SpatialDropout(dropout)
         
-        IN_UNITS = 32 + 32 + 4 + 16 * (2 + 1) + 5 + len(self.contcols)
+        IN_UNITS = 32 + 32 + 5 + 4 + 16 + 16 + (8 * 5) + len(self.contcols)
         LSTM_UNITS = hidden
         
         if self.model_type == 'lstm':
@@ -463,6 +461,10 @@ class LearnNet(nn.Module):
             self.emb_part(  x[:,:, self.modcols.index('part')].long()  ), 
             (self.emb_tag(x[:,:, self.tag_idx].long()) * self.tag_wts).sum(2),
             self.emb_lag_time(   x[:,:, self.modcols.index('lag_time_cat')].long()   ), 
+            self.emb_lag_time(   x[:,:, self.modcols.index('lag_time_cat1')].long()   ), 
+            self.emb_lag_time(   x[:,:, self.modcols.index('lag_time_cat2')].long()   ), 
+            self.emb_lag_time(   x[:,:, self.modcols.index('lag_time_cat3')].long()   ), 
+            self.emb_lag_time(   x[:,:, self.modcols.index('lag_time_cat4')].long()   ), 
             self.emb_elapsed_time(  x[:,:, self.modcols.index('elapsed_time_cat')].long()  )
             ] #+ [self.emb_tag(x[:,:, ii.item()].long()) for ii in torch.where(self.tag_idx)[0]]
             , 2)
@@ -494,7 +496,6 @@ class LearnNet(nn.Module):
 logger.info('Create model and loaders')
 model = self = LearnNet(MODCOLS, CONTCOLS, PADVALS, EXTRACOLS)
 model.to(device)
-torch.save(model.state_dict(), 'tmp.bin')
 
 
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
@@ -606,6 +607,13 @@ for epoch in range(50):
 # Make the content_user_answer inside the dict (for submission time)
 # Store the mean vals inside pdict for submission time. 
 # Make an embedding out of the count of user answers and the count of correct
+'''
+Try summing large vectors instead of concat
+Try making one layer lstm  with exercise and next layer with response
+Try lag time as lag - elapsed time ???
+Add lag1, lag2 etc.
+Try randomly cutting some sequences 
+'''
 
 
 
