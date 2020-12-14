@@ -149,6 +149,7 @@ arg('--batchsize', type=int, default=1024)
 arg('--lr', type=float, default=0.001)
 arg('--epochs', type=int, default=20)
 arg('--maxseq', type=int, default=128)
+arg('--hidden', type=int, default=256)
 arg('--n_layers', type=int, default=2)
 arg('--n_heads', type=int, default=8)
 arg('--model', type=str, default='lstm')
@@ -300,7 +301,7 @@ NOPAD = ['prior_question_elapsed_time', 'prior_question_had_explanation', \
              'timestamp', 'content_type_id'] + CONTCOLS
 PADVALS = train[MODCOLS].max(0) + 1
 PADVALS[NOPAD] = 0
-EXTRACOLS = ['lag_time_cat', 'elapsed_time_cat']
+EXTRACOLS = ['lag_time_cat',  'elapsed_time_cat']
 #self = SAKTDataset(train, MODCOLS, PADVALS)
 
 
@@ -336,8 +337,8 @@ class SAKTDataset(Dataset):
         self.padtarget = np.array([self.padvals[self.targetidx].tolist()])
         self.yidx = self.cols.index('answered_correctly') 
         self.timecols = [self.cols.index(c) for c in ['timestamp','prior_question_elapsed_time']]
-        self.lagbins = np.concatenate([np.linspace(*a).astype(np.int32) for a in [(0, 5, 6), (10, 100, 20),(120, 600, 40), 
-                              (660, 1440, 14), (1960, 10800, 18), (10800, 259200, 30), 
+        self.lagbins = np.concatenate([np.linspace(*a).astype(np.int32) for a in [(0, 10, 6), (12, 100, 45),(120, 600, 80), 
+                              (660, 1440, 28), (1960, 10800, 36), (10800, 259200, 60), 
                               (518400, 2592000, 10), (2592000, 31104000, 22), (31104000, 311040000, 10)]])
     
     def __len__(self):
@@ -365,6 +366,10 @@ class SAKTDataset(Dataset):
         # convert time to lag
         umat[:, self.timecols[0]][1:] = umat[:, self.timecols[0]][1:] - umat[:, self.timecols[0]][:-1]
         umat[:, self.timecols[0]][0] = 0
+        # make lag 1 to 5
+        lagmat = np.transpose(np.stack( \
+                    np.concatenate((umat[:, self.timecols[0]][l:], np.ones(l)*10**8)) \
+                        for l in range(1, 5)))
         
         # Time embeddings
         timeemb =   np.stack(( \
@@ -393,7 +398,7 @@ class SAKTDataset(Dataset):
     
 class LearnNet(nn.Module):
     def __init__(self, modcols, contcols, padvals, extracols, 
-                 device = device, dropout = 0.2, model_type = args.model):
+                 device = device, dropout = 0.2, model_type = args.model, hidden = args.hidden):
         super(LearnNet, self).__init__()
         
         self.dropout = nn.Dropout(dropout)
@@ -409,7 +414,7 @@ class LearnNet(nn.Module):
         self.emb_bundle_id = nn.Embedding(13526, 32)
         self.emb_part = nn.Embedding(9, 4)
         self.emb_tag= nn.Embedding(190, 16)
-        self.emb_lag_time = nn.Embedding(180, 16)
+        self.emb_lag_time = nn.Embedding(301, 16)
         self.emb_elapsed_time = nn.Embedding(301, 16)
         self.emb_cont_user_answer = nn.Embedding(13526 * 4, 5)
             
@@ -424,12 +429,13 @@ class LearnNet(nn.Module):
         
         self.embedding_dropout = SpatialDropout(dropout)
         
-        LSTM_UNITS = 32 + 32 + 4 + 16 * (2 + 1) + 5 + len(self.contcols)
+        IN_UNITS = 32 + 32 + 4 + 16 * (2 + 1) + 5 + len(self.contcols)
+        LSTM_UNITS = hidden
         
         if self.model_type == 'lstm':
-            self.seqnet = nn.LSTM(LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
+            self.seqnet = nn.LSTM(IN_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
         if self.model_type == 'gru':
-            self.seqnet = nn.GRU(LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
+            self.seqnet = nn.GRU(IN_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
         if self.model_type == 'xlm':
             self.xcfg = XLMConfig()
             self.xcfg.causal = True
@@ -490,7 +496,7 @@ model = self = LearnNet(MODCOLS, CONTCOLS, PADVALS, EXTRACOLS)
 model.to(device)
 
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
-trndataset = SAKTDataset(train, None, MODCOLS, PADVALS, EXTRACOLS, maxseq = args.maxseq)
+trndataset = self = SAKTDataset(train, None, MODCOLS, PADVALS, EXTRACOLS, maxseq = args.maxseq)
 valdataset = SAKTDataset(valid, train, MODCOLS, PADVALS, EXTRACOLS, maxseq = args.maxseq)
 loaderargs = {'num_workers' : args.workers, 'batch_size' : args.batchsize}
 trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
