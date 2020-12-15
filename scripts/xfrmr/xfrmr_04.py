@@ -564,7 +564,7 @@ for epoch in range(50):
         optimizer.step()
         '''
         with autocast():
-            out = model(x)
+            out = model(x, m)
             loss = criterion(out, y)
         if device != 'cpu':
             scaler.scale(loss).backward()
