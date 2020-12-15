@@ -417,7 +417,7 @@ class LearnNet(nn.Module):
         self.emb_tag= nn.Embedding(190, 16 * mult)
         self.emb_lag_time = nn.Embedding(301, 16)
         self.emb_elapsed_time = nn.Embedding(301, 16)
-        self.emb_cont_user_answer = nn.Embedding(13526 * 4, 16)
+        self.emb_cont_user_answer = nn.Embedding(13526 * 4, 4)
             
         self.tag_idx = torch.tensor(['tag' in i for i in self.modcols])
         self.tag_wts = torch.ones((sum(self.tag_idx), \
