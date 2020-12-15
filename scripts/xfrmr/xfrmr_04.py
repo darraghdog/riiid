@@ -456,9 +456,9 @@ class LearnNet(nn.Module):
             self.seqnet  = XLMModel(self.xcfg)
             
         self.linear1 = nn.Linear(LSTM_UNITS \
-                                 if self.last_n_hidden  == 1 else LSTM_UNITS * 2, LSTM_UNITS//2)
+                                 if self.last_n_hidden  == 1 else LSTM_UNITS * 3, LSTM_UNITS//2)
         self.bn0 = nn.BatchNorm1d(num_features=len(self.contcols))
-        self.bn1 = nn.BatchNorm1d(num_features=LSTM_UNITS if self.last_n_hidden  == 1 else LSTM_UNITS * 2)
+        self.bn1 = nn.BatchNorm1d(num_features=LSTM_UNITS if self.last_n_hidden  == 1 else LSTM_UNITS * 3)
         self.bn2 = nn.BatchNorm1d(num_features=LSTM_UNITS//2)
         
         self.linear_out = nn.Linear(LSTM_UNITS//2, 1)
@@ -500,7 +500,7 @@ class LearnNet(nn.Module):
             mask = m[:,-self.last_n_hidden:].float()
             avg_pool = torch.sum(hidden * mask.unsqueeze(-1), 1)*(1/ mask.sum(1)).unsqueeze(1)
             max_pool, _ = torch.max(hidden * mask.unsqueeze(-1), 1)
-            hidden = torch.cat((max_pool, avg_pool), 1)
+            hidden = torch.cat((max_pool, avg_pool, hidden[:,-1,:]), 1)
         hidden = self.dropout( self.bn1( hidden) )
         hidden  = F.relu(self.linear1(hidden))
         hidden = self.dropout(self.bn2(hidden))
