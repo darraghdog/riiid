@@ -149,6 +149,7 @@ arg('--batchsize', type=int, default=1024)
 arg('--lr', type=float, default=0.001)
 arg('--epochs', type=int, default=20)
 arg('--maxseq', type=int, default=128)
+arg('--last_n_hidden', type=int, default=1)
 arg('--hidden', type=int, default=256)
 arg('--n_layers', type=int, default=2)
 arg('--n_heads', type=int, default=8)
@@ -399,7 +400,8 @@ class SAKTDataset(Dataset):
     
 class LearnNet(nn.Module):
     def __init__(self, modcols, contcols, padvals, extracols, 
-                 device = device, dropout = 0.2, model_type = args.model, hidden = args.hidden):
+                 device = device, dropout = 0.2, model_type = args.model, 
+                 hidden = args.hidden, last_n_hidden = args.last_n_hidden):
         super(LearnNet, self).__init__()
         
         self.dropout = nn.Dropout(dropout)
@@ -425,12 +427,18 @@ class LearnNet(nn.Module):
         self.tag_wts.requires_grad = True
         self.cont_wts = nn.Parameter( torch.ones(len(self.contcols)) )
         self.cont_wts.requires_grad = True
+        self.last_n_hidden = last_n_hidden
         
         self.cont_idx = [self.modcols.index(c) for c in self.contcols]
         
         self.embedding_dropout = SpatialDropout(dropout)
         
-        IN_UNITS = 32 + 32 + 4 + 16 * (2 + 1) + 5 + len(self.contcols)
+        IN_UNITS = \
+                self.emb_content_id.embedding_dim + self.emb_bundle_id.embedding_dim + \
+                self.emb_part.embedding_dim + self.emb_tag.embedding_dim + \
+                self.emb_lag_time.embedding_dim + self.emb_elapsed_time.embedding_dim + \
+                self.emb_cont_user_answer.embedding_dim + \
+                len(self.contcols)
         LSTM_UNITS = hidden
         
         if self.model_type == 'lstm':
@@ -447,9 +455,10 @@ class LearnNet(nn.Module):
             self.xcfg.return_dict = False
             self.seqnet  = XLMModel(self.xcfg)
             
-        self.linear1 = nn.Linear(LSTM_UNITS, LSTM_UNITS//2)
+        self.linear1 = nn.Linear(LSTM_UNITS \
+                                 if self.last_n_hidden  == 1 else LSTM_UNITS * 2, LSTM_UNITS//2)
         self.bn0 = nn.BatchNorm1d(num_features=len(self.contcols))
-        self.bn1 = nn.BatchNorm1d(num_features=LSTM_UNITS)
+        self.bn1 = nn.BatchNorm1d(num_features=LSTM_UNITS if self.last_n_hidden  == 1 else LSTM_UNITS * 2)
         self.bn2 = nn.BatchNorm1d(num_features=LSTM_UNITS//2)
         
         self.linear_out = nn.Linear(LSTM_UNITS//2, 1)
@@ -484,7 +493,14 @@ class LearnNet(nn.Module):
         else:
             hidden, _ = self.seqnet(xinp)
         # Take last hidden unit
-        hidden = hidden[:,-1,:]
+        if self.last_n_hidden == 1:
+            hidden = hidden[:,-1,:]
+        else:
+            hidden = hidden[:,-self.last_n_hidden:,:]
+            mask = m[:,-self.last_n_hidden:].float()
+            avg_pool = torch.sum(hidden * mask.unsqueeze(-1), 1)*(1/ mask.sum(1)).unsqueeze(1)
+            max_pool, _ = torch.max(hidden * mask.unsqueeze(-1), 1)
+            hidden = torch.cat((max_pool, avg_pool), 1)
         hidden = self.dropout( self.bn1( hidden) )
         hidden  = F.relu(self.linear1(hidden))
         hidden = self.dropout(self.bn2(hidden))
