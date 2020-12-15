@@ -151,6 +151,7 @@ arg('--epochs', type=int, default=20)
 arg('--maxseq', type=int, default=128)
 arg('--hidden', type=int, default=256)
 arg('--n_layers', type=int, default=2)
+arg('--embmult', type=int, default=1)
 arg('--n_heads', type=int, default=8)
 arg('--model', type=str, default='lstm')
 arg('--label-smoothing', type=float, default=0.01)
@@ -272,16 +273,17 @@ train['answered_correctly_ct_log'] = np.log1p(train['answered_correctly_ct_c'].f
 valid['answered_correctly_ct_log'] = np.log1p(valid['answered_correctly_ct_c'].fillna(0).astype(np.float32)) - 7.5
 
 
-## Create index for loader
-#trnidx = train.reset_index().groupby(['user_id'])['index'].apply(list).to_dict()
-#validx = valid.reset_index().groupby(['user_id'])['index'].apply(list).to_dict()
-
 NORMCOLS = ['counts___feat0', 'counts___feat1', 'counts___feat2', 
             'cid_answered_correctly']
-meanvals = np.log1p(train[NORMCOLS].fillna(0).astype(np.float32)).mean().values
-pdicts['meanvals'] = meanvals
-#train[NORMCOLS] = np.log1p(train[NORMCOLS].fillna(0).astype(np.float32)) - meanvals
-#valid[NORMCOLS] = np.log1p(valid[NORMCOLS].fillna(0).astype(np.float32)) - meanvals
+pdicts['meanvals'] = np.log1p(train[NORMCOLS].fillna(0).astype(np.float32)).mean().values
+train[NORMCOLS] = np.log1p(train[NORMCOLS].fillna(0).astype(np.float32)) - pdicts['meanvals']
+valid[NORMCOLS] = np.log1p(valid[NORMCOLS].fillna(0).astype(np.float32)) - pdicts['meanvals']
+
+
+# Create index for loader
+trnidx = train.reset_index().groupby(['user_id'])['index'].apply(list).to_dict()
+validx = valid.reset_index().groupby(['user_id'])['index'].apply(list).to_dict()
+
 FEATCOLS = ['counts___feat0', 'avgcorrect___feat0', 'counts___feat1', 'avgcorrect___feat1', 
     'counts___feat2', 'avgcorrect___feat2', 'cid_answered_correctly', 
     'rank_stats_0', 'rank_stats_1']
@@ -300,13 +302,13 @@ NOPAD = ['prior_question_elapsed_time', 'prior_question_had_explanation', \
              'timestamp', 'content_type_id'] + CONTCOLS
 PADVALS = train[MODCOLS].max(0) + 1
 PADVALS[NOPAD] = 0
-EXTRACOLS = ['lag_time_cat',  'elapsed_time_cat', 'question_seen_cat']
+EXTRACOLS = ['lag_time_cat',  'elapsed_time_cat']
 #self = SAKTDataset(train, MODCOLS, PADVALS)
 
 
 class SAKTDataset(Dataset):
-    def __init__(self, data, basedf, cols, padvals, extracols, normcols, 
-                 maxseq = args.maxseq, normvals = meanvals, has_target = True): 
+    def __init__(self, data, basedf, cols, padvals, extracols, 
+                 maxseq = args.maxseq, has_target = True): 
         super(SAKTDataset, self).__init__()
         
         self.cols = cols
@@ -322,8 +324,7 @@ class SAKTDataset(Dataset):
         self.uidx = self.data.reset_index()\
             .groupby(['user_id'])['index'].apply(list).to_dict()
         self.quidx = self.data.query('base==0').reset_index()[['user_id', 'index']].values
-        self.normvals = meanvals
-        self.normcols = [self.cols.index(c) for c in normcols]
+        
         #if basedf is None:
         #    self.quidx = self.quidx[np.random.choice(self.quidx.shape[0], 2*10**6, replace=False)]
         
@@ -366,6 +367,10 @@ class SAKTDataset(Dataset):
         # convert time to lag
         umat[:, self.timecols[0]][1:] = umat[:, self.timecols[0]][1:] - umat[:, self.timecols[0]][:-1]
         umat[:, self.timecols[0]][0] = 0
+        # make lag 1 to 5
+        lagmat = np.transpose(np.stack( \
+                    np.concatenate((umat[:, self.timecols[0]][l:], np.ones(l)*10**8)) \
+                        for l in range(1, 5)))
         
         # Time embeddings
         timeemb =   np.stack(( \
@@ -373,14 +378,6 @@ class SAKTDataset(Dataset):
                     (umat[:, self.timecols[1]] / 1000).clip(0, 300))).round()
         timeemb = np.transpose(timeemb, (1,0))
         umat = np.concatenate((umat, timeemb), 1)
-        
-        # Create question seen catagorical
-        qseen = (umat[:, self.cols.index('counts___feat1')].clip(0,6) * 10 + \
-                 (umat[:, self.cols.index('avgcorrect___feat1')] *10).round(1))[:, np.newaxis]
-        umat = np.concatenate((umat, qseen), 1)
-        
-        # Normalise the continuous count cols
-        umat[:,self.normcols] = np.log1p(umat[:,self.normcols]) - self.normvals
         
         # preprocess continuous time - try log scale and roughly center it
         umat[:, self.timecols] = np.log10( 1.+ umat[:, self.timecols] / (60 * 1000) ) 
@@ -401,7 +398,7 @@ class SAKTDataset(Dataset):
         return umat, umask, target
     
 class LearnNet(nn.Module):
-    def __init__(self, modcols, contcols, padvals, extracols, 
+    def __init__(self, modcols, contcols, padvals, extracols, mult = args.embmult,
                  device = device, dropout = 0.2, model_type = args.model, hidden = args.hidden):
         super(LearnNet, self).__init__()
         
@@ -414,14 +411,13 @@ class LearnNet(nn.Module):
         self.embcols = ['content_id', 'part']
         self.model_type = model_type
         
-        self.emb_content_id = nn.Embedding(13526, 32)
-        self.emb_bundle_id = nn.Embedding(13526, 32)
-        self.emb_part = nn.Embedding(9, 4)
-        self.emb_tag= nn.Embedding(190, 16)
+        self.emb_content_id = nn.Embedding(13526, 32 * mult)
+        self.emb_bundle_id = nn.Embedding(13526, 32 * mult)
+        self.emb_part = nn.Embedding(9, 4 * mult)
+        self.emb_tag= nn.Embedding(190, 16 * mult)
         self.emb_lag_time = nn.Embedding(301, 16)
         self.emb_elapsed_time = nn.Embedding(301, 16)
-        self.emb_cont_user_answer = nn.Embedding(13526 * 4, 4)
-        self.emb_ques_seen = nn.Embedding(71, 4)
+        self.emb_cont_user_answer = nn.Embedding(13526 * 4, 16)
             
         self.tag_idx = torch.tensor(['tag' in i for i in self.modcols])
         self.tag_wts = torch.ones((sum(self.tag_idx), 16))  / sum(self.tag_idx)
@@ -434,17 +430,18 @@ class LearnNet(nn.Module):
         
         self.embedding_dropout = SpatialDropout(dropout)
         
-        IN_UNITS = 32 + 32 + 4 + 16 * (2 + 1) + 4 + 4 + len(self.contcols)
+        IN_UNITS = \
+                self.emb_content_id.embedding_dim + self.emb_bundle_id.embedding_dim + \
+                self.emb_part.embedding_dim + self.emb_tag.embedding_dim + \
+                self.emb_lag_time.embedding_dim + self.emb_elapsed_time.embedding_dim + \
+                self.emb_cont_user_answer.embedding_dim + \
+                len(self.contcols)
         LSTM_UNITS = hidden
         
         if self.model_type == 'lstm':
-            self.seqnet1 = nn.LSTM(IN_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
-            if args.n_layers==2:
-                self.seqnet2 = nn.LSTM(LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
+            self.seqnet = nn.LSTM(IN_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
         if self.model_type == 'gru':
-            self.seqnet1 = nn.GRU(IN_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
-            if args.n_layers==2:
-                self.seqnet2 = nn.GRU(LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
+            self.seqnet = nn.GRU(IN_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
         if self.model_type == 'xlm':
             self.xcfg = XLMConfig()
             self.xcfg.causal = True
@@ -456,16 +453,11 @@ class LearnNet(nn.Module):
             self.seqnet  = XLMModel(self.xcfg)
             
         self.linear1 = nn.Linear(LSTM_UNITS, LSTM_UNITS//2)
-        if args.n_layers==2:
-            self.linear2 = nn.Linear(LSTM_UNITS, LSTM_UNITS//2)
-            self.linear_out = nn.Linear(LSTM_UNITS, 1)
-        else:
-            self.linear_out = nn.Linear(LSTM_UNITS//2, 1)
         self.bn0 = nn.BatchNorm1d(num_features=len(self.contcols))
         self.bn1 = nn.BatchNorm1d(num_features=LSTM_UNITS)
         self.bn2 = nn.BatchNorm1d(num_features=LSTM_UNITS//2)
         
-        
+        self.linear_out = nn.Linear(LSTM_UNITS//2, 1)
         
     def forward(self, x, m = None):
         
@@ -476,7 +468,6 @@ class LearnNet(nn.Module):
             self.emb_cont_user_answer(  x[:,:, self.modcols.index('content_user_answer')].long()  ),
             self.emb_part(  x[:,:, self.modcols.index('part')].long()  ), 
             (self.emb_tag(x[:,:, self.tag_idx].long()) * self.tag_wts).sum(2),
-            self.emb_ques_seen(   x[:,:, self.modcols.index('question_seen_cat')].long()   ), 
             self.emb_lag_time(   x[:,:, self.modcols.index('lag_time_cat')].long()   ), 
             self.emb_elapsed_time(  x[:,:, self.modcols.index('elapsed_time_cat')].long()  )
             ] #+ [self.emb_tag(x[:,:, ii.item()].long()) for ii in torch.where(self.tag_idx)[0]]
@@ -495,26 +486,14 @@ class LearnNet(nn.Module):
             xinp = self.linearx(xinp)
             inputs = {'input_ids': None, 'inputs_embeds': xinp, 'attention_mask': m}
             hidden = self.seqnet(**inputs)
-            hidden = self.dropout( self.bn1( hidden[:,-1,:] ) )
         else:
-            hidden, _ = self.seqnet1(xinp)
-            # Take last hidden unit
-            if args.n_layers==2:
-                hidden2, _ = self.seqnet2(hidden)
-                hidden2 = self.dropout( self.bn1( hidden2[:,-1,:] ) )
-                hidden = self.dropout( self.bn1( hidden [:,-1,:]) )
-            else:
-                hidden = self.dropout( self.bn1( hidden[:,-1,:] ) )
-
+            hidden, _ = self.seqnet(xinp)
+        # Take last hidden unit
+        hidden = hidden[:,-1,:]
+        hidden = self.dropout( self.bn1( hidden) )
         hidden  = F.relu(self.linear1(hidden))
         hidden = self.dropout(self.bn2(hidden))
-        if args.n_layers==2:
-            hidden2  = F.relu(self.linear2(hidden2))
-            hidden2 = self.dropout(self.bn2(hidden2))
-            hidden = torch.cat((hidden, hidden2), 1)
-            out = self.linear_out(hidden).flatten()
-        else:
-            out = self.linear_out(hidden).flatten()
+        out = self.linear_out(hidden).flatten()
         
         return out
 
@@ -525,8 +504,8 @@ torch.save(model.state_dict(), 'tmp.bin')
 
 
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
-trndataset = self = SAKTDataset(train, None, MODCOLS, PADVALS, EXTRACOLS, NORMCOLS , maxseq = args.maxseq)
-valdataset = SAKTDataset(valid, train, MODCOLS, PADVALS, EXTRACOLS, NORMCOLS , maxseq = args.maxseq)
+trndataset = self = SAKTDataset(train, None, MODCOLS, PADVALS, EXTRACOLS, maxseq = args.maxseq)
+valdataset = SAKTDataset(valid, train, MODCOLS, PADVALS, EXTRACOLS, maxseq = args.maxseq)
 loaderargs = {'num_workers' : args.workers, 'batch_size' : args.batchsize}
 trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
 valloader = DataLoader(valdataset, shuffle=False, **loaderargs)
@@ -585,7 +564,7 @@ for epoch in range(50):
         optimizer.step()
         '''
         with autocast():
-            out = model(x, m)
+            out = model(x)
             loss = criterion(out, y)
         if device != 'cpu':
             scaler.scale(loss).backward()
@@ -625,9 +604,7 @@ for epoch in range(50):
 
 
 # Ideas:
-# Split tags to separate embeddings
-# Try with a gru instead of an lstm
-# Part corrent for historical 
+# Part count for historical 
 # Make the content_user_answer inside the dict (for submission time)
 # Store the mean vals inside pdict for submission time. 
 # Make an embedding out of the count of user answers and the count of correct
