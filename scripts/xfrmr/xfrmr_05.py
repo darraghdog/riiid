@@ -322,7 +322,9 @@ pdicts['ldict'] = ldict
 pdicts['bdict'] = bdict
 pdicts['qdf'] = qdf
 
-
+if True:
+    dumpobj(f'data/{DIR}/pdicts_{VERSION}.pk', pdicts)
+    
 class SAKTDataset(Dataset):
     def __init__(self, data, basedf, cols, padvals, extracols, 
                  maxseq = args.maxseq, has_target = True): 
@@ -443,7 +445,6 @@ class LearnNet(nn.Module):
         self.tag_wts.requires_grad = True
         self.cont_wts = nn.Parameter( torch.ones(len(self.contcols)) )
         self.cont_wts.requires_grad = True
-        self.last_n_hidden = last_n_hidden
         
         self.cont_idx = [self.modcols.index(c) for c in self.contcols]
         
@@ -519,7 +520,6 @@ class LearnNet(nn.Module):
 logger.info('Create model and loaders')
 model = LearnNet(pdicts['MODCOLS'], pdicts['CONTCOLS'], pdicts['PADVALS'], pdicts['EXTRACOLS'])
 model.to(device)
-
 
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
 trndataset = SAKTDataset(train, None, pdicts['MODCOLS'], pdicts['PADVALS'], pdicts['EXTRACOLS'], maxseq = args.maxseq)
