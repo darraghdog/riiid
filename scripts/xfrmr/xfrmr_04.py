@@ -420,7 +420,8 @@ class LearnNet(nn.Module):
         self.emb_cont_user_answer = nn.Embedding(13526 * 4, 16)
             
         self.tag_idx = torch.tensor(['tag' in i for i in self.modcols])
-        self.tag_wts = torch.ones((sum(self.tag_idx), 16))  / sum(self.tag_idx)
+        self.tag_wts = torch.ones((sum(self.tag_idx), \
+                                   self.emb_tag.embedding_dim ))  / sum(self.tag_idx)
         self.tag_wts = nn.Parameter(self.tag_wts)
         self.tag_wts.requires_grad = True
         self.cont_wts = nn.Parameter( torch.ones(len(self.contcols)) )
