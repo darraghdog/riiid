@@ -151,7 +151,6 @@ arg('--epochs', type=int, default=20)
 arg('--maxseq', type=int, default=128)
 arg('--hidden', type=int, default=256)
 arg('--n_layers', type=int, default=2)
-arg('--embmult', type=int, default=1)
 arg('--n_heads', type=int, default=8)
 arg('--model', type=str, default='lstm')
 arg('--label-smoothing', type=float, default=0.01)
@@ -275,9 +274,10 @@ valid['answered_correctly_ct_log'] = np.log1p(valid['answered_correctly_ct_c'].f
 
 NORMCOLS = ['counts___feat0', 'counts___feat1', 'counts___feat2', 
             'cid_answered_correctly']
-pdicts['meanvals'] = np.log1p(train[NORMCOLS].fillna(0).astype(np.float32)).mean().values
-train[NORMCOLS] = np.log1p(train[NORMCOLS].fillna(0).astype(np.float32)) - pdicts['meanvals']
-valid[NORMCOLS] = np.log1p(valid[NORMCOLS].fillna(0).astype(np.float32)) - pdicts['meanvals']
+meanvals = np.log1p(train[NORMCOLS].fillna(0).astype(np.float32)).mean().values
+pdicts['meanvals'] = meanvals
+train[NORMCOLS] = np.log1p(train[NORMCOLS].fillna(0).astype(np.float32)) - meanvals
+valid[NORMCOLS] = np.log1p(valid[NORMCOLS].fillna(0).astype(np.float32)) - meanvals
 
 
 # Create index for loader
@@ -398,7 +398,7 @@ class SAKTDataset(Dataset):
         return umat, umask, target
     
 class LearnNet(nn.Module):
-    def __init__(self, modcols, contcols, padvals, extracols, mult = args.embmult,
+    def __init__(self, modcols, contcols, padvals, extracols, 
                  device = device, dropout = 0.2, model_type = args.model, hidden = args.hidden):
         super(LearnNet, self).__init__()
         
@@ -411,17 +411,16 @@ class LearnNet(nn.Module):
         self.embcols = ['content_id', 'part']
         self.model_type = model_type
         
-        self.emb_content_id = nn.Embedding(13526, 32 * mult)
-        self.emb_bundle_id = nn.Embedding(13526, 32 * mult)
-        self.emb_part = nn.Embedding(9, 4 * mult)
-        self.emb_tag= nn.Embedding(190, 16 * mult)
+        self.emb_content_id = nn.Embedding(13526, 32)
+        self.emb_bundle_id = nn.Embedding(13526, 32)
+        self.emb_part = nn.Embedding(9, 4)
+        self.emb_tag= nn.Embedding(190, 16)
         self.emb_lag_time = nn.Embedding(301, 16)
         self.emb_elapsed_time = nn.Embedding(301, 16)
-        self.emb_cont_user_answer = nn.Embedding(13526 * 4, 4)
+        self.emb_cont_user_answer = nn.Embedding(13526 * 4, 5)
             
         self.tag_idx = torch.tensor(['tag' in i for i in self.modcols])
-        self.tag_wts = torch.ones((sum(self.tag_idx), \
-                                   self.emb_tag.embedding_dim ))  / sum(self.tag_idx)
+        self.tag_wts = torch.ones((sum(self.tag_idx), 16))  / sum(self.tag_idx)
         self.tag_wts = nn.Parameter(self.tag_wts)
         self.tag_wts.requires_grad = True
         self.cont_wts = nn.Parameter( torch.ones(len(self.contcols)) )
@@ -431,12 +430,7 @@ class LearnNet(nn.Module):
         
         self.embedding_dropout = SpatialDropout(dropout)
         
-        IN_UNITS = \
-                self.emb_content_id.embedding_dim + self.emb_bundle_id.embedding_dim + \
-                self.emb_part.embedding_dim + self.emb_tag.embedding_dim + \
-                self.emb_lag_time.embedding_dim + self.emb_elapsed_time.embedding_dim + \
-                self.emb_cont_user_answer.embedding_dim + \
-                len(self.contcols)
+        IN_UNITS = 32 + 32 + 4 + 16 * (2 + 1) + 5 + len(self.contcols)
         LSTM_UNITS = hidden
         
         if self.model_type == 'lstm':
@@ -511,17 +505,6 @@ loaderargs = {'num_workers' : args.workers, 'batch_size' : args.batchsize}
 trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
 valloader = DataLoader(valdataset, shuffle=False, **loaderargs)
 x, m, y = next(iter(trnloader))
-
-'''
-from transformers import XLMTokenizer, XLMModel
-tokenizer = XLMTokenizer.from_pretrained('xlm-mlm-en-2048')
-model = XLMModel.from_pretrained("xlm-clm-ende-1024")
-inputs = tokenizer("Hello, my dog is cute", return_tensors="pt")
-# {'input_ids': tensor([[   0, 6496,   15,   52, 2232,   26, 9684,    1]]),
-# 'token_type_ids': tensor([[0, 0, 0, 0, 0, 0, 0, 0]]), 
-#'attention_mask': tensor([[1, 1, 1, 1, 1, 1, 1, 1]])}
-outputs = model(**inputs)
-'''
 
 criterion =  nn.BCEWithLogitsLoss()
 
@@ -605,7 +588,9 @@ for epoch in range(50):
 
 
 # Ideas:
-# Part count for historical 
+# Split tags to separate embeddings
+# Try with a gru instead of an lstm
+# Part corrent for historical 
 # Make the content_user_answer inside the dict (for submission time)
 # Store the mean vals inside pdict for submission time. 
 # Make an embedding out of the count of user answers and the count of correct
