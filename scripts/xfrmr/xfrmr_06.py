@@ -93,7 +93,6 @@ def add_user_feats(df, pdicts, update = True):
         cidcu[cnt] = pdicts['content_id_count_u_dict'].item(uqidx)
         qamat[cnt] = pdicts['qaRatiocum'].item(uidx) / (pdicts['count_u_dict'].item(uidx) + 0.01), \
                 pdicts['qaRatiocum'].item(uidx) / (pdicts['qaRatioCorrectcum'].item(uidx) + 0.01)
-        print(f"{pdicts['qaRatiocum'].item(uidx)}\t{pdicts['qaRatioCorrectcum'].item(uidx)}")
 
         if update:
             pdicts['count_u_dict'][uidx] += 1
@@ -165,7 +164,6 @@ logger.info(f'Loaded columns {", ".join(FILTCOLS)}')
 valid = pd.read_feather(f'data/{DIR}/cv{CUT+1}_valid.feather')[FILTCOLS]
 train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS]
 gc.collect()
-
 
 train = train.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
 valid = valid.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
@@ -330,6 +328,11 @@ if True:
     dumpobj(f'data/{DIR}/pdicts_{VERSION}.pk', pdicts)
     dumpobj(f'data/{DIR}/train_{VERSION}.pk', train)
     dumpobj(f'data/{DIR}/valid_{VERSION}.pk', valid)
+    df = pd.concat([train, valid]).reset_index(drop = True)
+    df = df.sort_values(['user_id', 'timestamp']).groupby(['user_id']).tail(192)
+    dumpobj(f'data/{DIR}/train_all_{VERSION}_tail.pk', df)
+    del df
+    gc.collect()
 
 logger.info(f'Na vals train \n\n{train.isna().sum()}')
 logger.info(f'Na vals valid \n\n{valid.isna().sum()}')
