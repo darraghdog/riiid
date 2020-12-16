@@ -37,7 +37,7 @@ warnings.filterwarnings("ignore")
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows',1000)
 pd.set_option('display.width', 1000)
-
+pd.set_option('display.float_format', lambda x: '%.3f' % x)
 logger = get_logger('Train', 'INFO')
 
 # funcs for user stats with loop
@@ -50,7 +50,7 @@ def add_user_feats(df, pdicts, update = True):
     cidacsu = np.zeros(len(df), dtype=np.uint32)
     cidcu = np.zeros(len(df), dtype=np.uint32)
     contid = np.zeros((len(df), 1), dtype=np.uint8)
-    qamat = np.zeros((len(df),2), dtype=np.float16)
+    qamat = np.zeros((len(df),2), dtype=np.float32)
 
     itercols = ['user_id','answered_correctly', 'part', \
                     'prior_question_had_explanation', 'prior_question_elapsed_time', 'content_id', \
@@ -193,7 +193,7 @@ def qaRanks(df):
     aggdf2 = df.groupby(['question_id'])['answered_correctly'].count()
     aggdf = pd.merge(aggdf1, aggdf2, left_index=True, right_index = True).reset_index()
     aggdf.columns = ['question_id', 'user_answer', 'correct_answer', 'answcount', 'quescount']
-    aggdf['answerratio'] = (aggdf.answcount / aggdf.quescount).astype(np.float16)
+    aggdf['answerratio'] = (aggdf.answcount / aggdf.quescount).astype(np.float32)
     rankDf = aggdf.set_index('question_id')[[ 'answerratio', 'answcount']].reset_index()
     qaRatio = aggdf.set_index(['question_id', 'user_answer']).answerratio.to_dict()
     qaCorrect = qdf.set_index('question_id').correct_answer.to_dict()
@@ -207,18 +207,18 @@ train['prior_question_elapsed_time'] = train['prior_question_elapsed_time'].fill
 valid['prior_question_elapsed_time'] = valid['prior_question_elapsed_time'].fillna(0).astype(np.int32)
 
 content_df1 = train.query('content_type_id == 0')[['content_id','answered_correctly']]\
-                .groupby(['content_id']).agg(['mean', 'count']).astype(np.float16).reset_index()
+                .groupby(['content_id']).agg(['mean', 'count']).astype(np.float32).reset_index()
 content_df1.columns = ['content_id', 'answered_correctly_avg_c', 'answered_correctly_ct_c']
 content_df2 = train.query('content_type_id == 0') \
                 .groupby(['content_id','user_id']).size().reset_index()
-content_df2 = content_df2.groupby(['content_id'])[0].mean().astype(np.float16).reset_index()
+content_df2 = content_df2.groupby(['content_id'])[0].mean().astype(np.float32).reset_index()
 content_df2.columns = ['content_id', 'attempts_avg_c']
 content_df  = pd.merge(content_df1, content_df2, on = 'content_id')
 content_df.columns
 del content_df1, content_df2
 gc.collect()
 
-content_df.iloc[:,1:] = content_df.iloc[:,1:].astype(np.float16)
+content_df.iloc[:,1:] = content_df.iloc[:,1:].astype(np.float32)
 train = pd.merge(train, content_df, on=['content_id'], how="left")
 valid = pd.merge(valid, content_df, on=['content_id'], how="left")
 
@@ -330,9 +330,8 @@ if True:
 
 logger.info(f'Na vals train \n\n{train.isna().sum()}')
 logger.info(f'Na vals valid \n\n{valid.isna().sum()}')
-train = train.fillna(0)
-valid = valid.fillna(0)
-
+logger.info(f'Max vals train \n\n{train.isna().max()}')
+logger.info(f'Max vals valid \n\n{valid.isna().max()}')
 
 class SAKTDataset(Dataset):
     def __init__(self, data, basedf, cols, padvals, extracols, 
