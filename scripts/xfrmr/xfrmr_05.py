@@ -165,6 +165,7 @@ valid = pd.read_feather(f'data/{DIR}/cv{CUT+1}_valid.feather')[FILTCOLS]
 train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS]
 gc.collect()
 
+
 train = train.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
 valid = valid.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
 
@@ -221,8 +222,6 @@ content_df.iloc[:,1:] = content_df.iloc[:,1:].astype(np.float16)
 train = pd.merge(train, content_df, on=['content_id'], how="left")
 valid = pd.merge(valid, content_df, on=['content_id'], how="left")
 
-
-
 '''
 # user stats features with loops
 pdicts = {'answered_correctly_sum_u_dict' : defaultdict(int),
@@ -265,8 +264,13 @@ pdicts['uidx'] = train[['user_id']].drop_duplicates() \
 pdicts['max_uidx'] = max(v for v in pdicts['uidx'].values())
 pdicts['max_uqidx'] = max(v for v in pdicts['uqidx'].values())
 
+
 train = add_user_feats(train, pdicts)
 valid = add_user_feats(valid, pdicts)
+logger.info(f'Na vals train \n\n{train.isna().sum()}')
+logger.info(f'Na vals valid \n\n{valid.isna().sum()}')
+train = train.fillna(0)
+valid = valid.fillna(0)
 
 # For start off remove lectures
 train = train.loc[train.content_type_id == False].reset_index(drop=True)
@@ -284,7 +288,6 @@ meanvals = np.log1p(train[NORMCOLS].fillna(0).astype(np.float32)).mean().values
 pdicts['meanvals'] = meanvals
 train[NORMCOLS] = np.log1p(train[NORMCOLS].fillna(0).astype(np.float32)) - meanvals
 valid[NORMCOLS] = np.log1p(valid[NORMCOLS].fillna(0).astype(np.float32)) - meanvals
-
 
 # Create index for loader
 trnidx = train.reset_index().groupby(['user_id'])['index'].apply(list).to_dict()
@@ -326,6 +329,8 @@ pdicts['qdf'] = qdf
 
 if True:
     dumpobj(f'data/{DIR}/pdicts_{VERSION}.pk', pdicts)
+    dumpobj(f'data/{DIR}/train_{VERSION}.pk', train)
+    dumpobj(f'data/{DIR}/valid_{VERSION}.pk', valid)
     
 class SAKTDataset(Dataset):
     def __init__(self, data, basedf, cols, padvals, extracols, 
