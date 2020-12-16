@@ -267,10 +267,6 @@ pdicts['max_uqidx'] = max(v for v in pdicts['uqidx'].values())
 
 train = add_user_feats(train, pdicts)
 valid = add_user_feats(valid, pdicts)
-logger.info(f'Na vals train \n\n{train.isna().sum()}')
-logger.info(f'Na vals valid \n\n{valid.isna().sum()}')
-train = train.fillna(0)
-valid = valid.fillna(0)
 
 # For start off remove lectures
 train = train.loc[train.content_type_id == False].reset_index(drop=True)
@@ -331,7 +327,13 @@ if True:
     dumpobj(f'data/{DIR}/pdicts_{VERSION}.pk', pdicts)
     dumpobj(f'data/{DIR}/train_{VERSION}.pk', train)
     dumpobj(f'data/{DIR}/valid_{VERSION}.pk', valid)
-    
+
+logger.info(f'Na vals train \n\n{train.isna().sum()}')
+logger.info(f'Na vals valid \n\n{valid.isna().sum()}')
+train = train.fillna(0)
+valid = valid.fillna(0)
+
+
 class SAKTDataset(Dataset):
     def __init__(self, data, basedf, cols, padvals, extracols, 
                  maxseq = args.maxseq, has_target = True): 
