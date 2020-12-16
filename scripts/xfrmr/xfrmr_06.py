@@ -325,15 +325,23 @@ pdicts['bdict'] = bdict
 pdicts['qdf'] = qdf
 
 if True:
-    dumpobj(f'data/{DIR}/pdicts_{VERSION}.pk', pdicts)
+    logger.info('Dump objects - pdicts')
     for k, v in pdicts.items():
         dumpobj(f'data/{DIR}/pdicts____{k}.pk', v)
+    fo = gzip.open(f'data/{DIR}/{VERSION}/pdicts____uqidx.csv.gz','wb')
+    for k,v in pdicts['uqidx'].items():
+        s = '%s,%s,%s\n'%(*k,v)
+        fo.write(s.encode())
+    fo.close()	
+    logger.info('Dump objects - train/val')
     dumpobj(f'data/{DIR}/train_{VERSION}.pk', train)
     dumpobj(f'data/{DIR}/valid_{VERSION}.pk', valid)
+    logger.info('Dump objects - tail of maxseq')
     df = pd.concat([train, valid]).reset_index(drop = True)
     df = df.sort_values(['user_id', 'timestamp']).groupby(['user_id']).tail(args.maxseq)
     dumpobj(f'data/{DIR}/train_all_{VERSION}_tail.pk', df)
     del df
+    logger.info('Done... yayy!!')
     gc.collect()
 
 logger.info(f'Na vals train \n\n{train.isna().sum()}')
