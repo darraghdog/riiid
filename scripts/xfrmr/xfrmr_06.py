@@ -326,10 +326,12 @@ pdicts['qdf'] = qdf
 
 if True:
     dumpobj(f'data/{DIR}/pdicts_{VERSION}.pk', pdicts)
+    for k, v in pdicts.items():
+        dumpobj(f'data/{DIR}/pdicts____{k}.pk', v)
     dumpobj(f'data/{DIR}/train_{VERSION}.pk', train)
     dumpobj(f'data/{DIR}/valid_{VERSION}.pk', valid)
     df = pd.concat([train, valid]).reset_index(drop = True)
-    df = df.sort_values(['user_id', 'timestamp']).groupby(['user_id']).tail(192)
+    df = df.sort_values(['user_id', 'timestamp']).groupby(['user_id']).tail(args.maxseq)
     dumpobj(f'data/{DIR}/train_all_{VERSION}_tail.pk', df)
     del df
     gc.collect()
