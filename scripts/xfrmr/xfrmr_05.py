@@ -143,13 +143,15 @@ arg('--n_layers', type=int, default=2)
 arg('--n_heads', type=int, default=8)
 arg('--model', type=str, default='lstm')
 arg('--label-smoothing', type=float, default=0.01)
+arg('--dir', type=str, default='val')
+arg('--version', type=str, default='V05')
 args = parser.parse_args()
 logger.info(args)
 
 device = 'cpu' if platform.system() == 'Darwin' else 'cuda'
 CUT=0
-DIR='val'
-VERSION='V05'
+DIR=args.dir#'val'
+VERSION=args.version
 debug = False
 validaten_flg = False
 
