@@ -596,7 +596,7 @@ for epoch in range(args.epochs):
         y = y.to(device, dtype=torch.float)
         x = torch.autograd.Variable(x, requires_grad=True)
         y = torch.autograd.Variable(y)
-        '''
+        
         out = model(x, m)
         loss = criterion(out, y)
         loss.backward()
@@ -613,7 +613,7 @@ for epoch in range(args.epochs):
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()
-        
+        '''
         trn_loss += loss.item()
         trn_lossls.append(loss.item())
         trn_lossls = trn_lossls[-1000:]
