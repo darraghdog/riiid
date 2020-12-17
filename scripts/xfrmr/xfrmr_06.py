@@ -327,9 +327,9 @@ pdicts['qdf'] = qdf
 if True:
     logger.info('Dump objects - pdicts')
     for k, v in pdicts.items():
-        dumpobj(f'data/{DIR}/pdicts____{k}.pk', v)
+        dumpobj(f'data/{DIR}/pdicts____{VERSION}_{k}.pk', v)
     uqidxll = [(*k,v) for k,v in tqdm(pdicts['uqidx'].items())]
-    fo = open(f'data/{DIR}/{VERSION}/pdicts____uqidx.csv','w')
+    fo = open(f'data/{DIR}/pdicts____{VERSION}_uqidx.csv','w')
     for l in tqdm(uqidxll, total = len(uqidxll)):
         s = '%s %s %s\n'%(l)
         fo.write(s)
