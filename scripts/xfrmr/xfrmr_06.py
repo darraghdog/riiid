@@ -141,6 +141,7 @@ arg('--maxseq', type=int, default=128)
 arg('--hidden', type=int, default=256)
 arg('--n_layers', type=int, default=2)
 arg('--n_heads', type=int, default=8)
+arg('--bags', type=int, default=4)
 arg('--model', type=str, default='lstm')
 arg('--label-smoothing', type=float, default=0.01)
 arg('--dir', type=str, default='val')
@@ -577,7 +578,7 @@ logger.info('Start training')
 best_val_loss = 100.
 trn_lossls = []
 predls = []
-bags = 4
+bags = args.bags
 for epoch in range(args.epochs):
     for param in model.parameters():
         param.requires_grad = True
