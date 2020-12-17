@@ -328,11 +328,21 @@ if True:
     logger.info('Dump objects - pdicts')
     for k, v in pdicts.items():
         dumpobj(f'data/{DIR}/pdicts____{k}.pk', v)
-    fo = gzip.open(f'data/{DIR}/{VERSION}/pdicts____uqidx.csv.gz','wb')
-    for k,v in pdicts['uqidx'].items():
-        s = '%s,%s,%s\n'%(*k,v)
-        fo.write(s.encode())
+    uqidxll = [(*k,v) for k,v in tqdm(pdicts['uqidx'].items())]
+    fo = open(f'data/{DIR}/{VERSION}/pdicts____uqidx.csv','w')
+    for l in tqdm(uqidxll, total = len(uqidxll)):
+        s = '%s %s %s\n'%(l)
+        fo.write(s)
     fo.close()	
+    '''
+    fo = open(f'data/{DIR}/{VERSION}/pdicts____uqidx.csv','r')
+    uqidx = defaultdict(lambda: {})
+    for t, l in tqdm(enumerate(fo)):
+        l = list(map(int, l[:-1].split()))
+        uqidx[l[0]][l[1]] = l[2]
+        l = None
+    fo.close()
+    '''
     logger.info('Dump objects - train/val')
     dumpobj(f'data/{DIR}/train_{VERSION}.pk', train)
     dumpobj(f'data/{DIR}/valid_{VERSION}.pk', valid)
