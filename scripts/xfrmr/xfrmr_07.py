@@ -579,8 +579,8 @@ if args.dumpdata:
     df = pd.concat([train, valid]).reset_index(drop = True)
     df = df.sort_values(['user_id', 'timestamp']).groupby(['user_id']).tail(args.maxseq)
     dumpobj(f'data/{DIR}/train_all_{VERSION}_tail.pk', df)
-    alldataset = SAKTDataset(trainall, None, pdicts['MODCOLS'], pdicts['PADVALS'], pdicts['EXTRACOLS'], maxseq = args.maxseq)
-    dumpobj(f'data/{DIR}/alldataset_{VERSION}_tail.pk', df)
+    alldataset = SAKTDataset(df, None, pdicts['MODCOLS'], pdicts['PADVALS'], pdicts['EXTRACOLS'], maxseq = args.maxseq)
+    dumpobj(f'data/{DIR}/alldataset_{VERSION}_tail.pk', alldataset)
     del df, alldataset 
     gc.collect()
 
