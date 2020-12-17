@@ -408,6 +408,7 @@ class SAKTDataset(Dataset):
         
         if self.submit:
             # in this case, user will be the index, otherwise, we will pass the id
+            u = idx
             useqidx = self.uidx[u]
             # Pull out the max sequence of questions 
             useqidx = useqidx[-self.maxseq:]
