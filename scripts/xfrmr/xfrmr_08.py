@@ -272,7 +272,7 @@ pdicts['uqidx'] = 13523 * [{}]
 for id_,row_ in cid_udict.iteritems():
     pdicts['uqidx'][id_] = row_
 del cid_udict
-pdicts['max_uqidx'] = max(max(d.values()) for d in pdicts['uqidx'])
+pdicts['max_uqidx'] = max(max(d.values()) for d in pdicts['uqidx'] if d!= {})
 # pdicts['uqidx'] = train[qidx][['user_id', 'content_id']].drop_duplicates() \
 #            .reset_index(drop = True).reset_index() \
 #                .set_index(['user_id', 'content_id']).to_dict()['index']
