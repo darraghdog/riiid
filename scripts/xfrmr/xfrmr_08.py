@@ -265,9 +265,13 @@ pdicts =  {**dict((col, np.zeros(n_users, dtype= np.uint32)) for col in u_int_co
          **{'qaRatio' : qaRatio, 'qaCorrect': qaCorrect}}
 
 
-pdicts['uqidx'] = train[qidx][['user_id', 'content_id']].drop_duplicates() \
+cid_udict = train[qidx][['user_id', 'content_id']].drop_duplicates() \
                             .reset_index(drop=True).reset_index().groupby('content_id') \
                             .apply(lambda x : x.set_index('user_id')['index'].to_dict()  )
+pdicts['uqidx'] = 13523 * [{}]
+for id_,row_ in cid_udict.iteritems():
+    pdicts['uqidx'][id_] = row_
+del cid_udict
 pdicts['max_uqidx'] = max(max(d.values()) for d in pdicts['uqidx'])
 # pdicts['uqidx'] = train[qidx][['user_id', 'content_id']].drop_duplicates() \
 #            .reset_index(drop = True).reset_index() \
@@ -343,11 +347,13 @@ if args.dumpdata:
     logger.info('Dump objects - pdicts')
     for k, v in pdicts.items():
         dumpobj(f'data/{DIR}/pdicts____{VERSION}_{k}.pk', v)
-    uqidxll = [(*k,v) for k,v in tqdm(pdicts['uqidx'].items())]
+    
+    
     fo = open(f'data/{DIR}/pdicts____{VERSION}_uqidx.csv','w')
-    for l in tqdm(uqidxll, total = len(uqidxll)):
-        s = '%s %s %s\n'%(l)
-        fo.write(s)
+    for cid, d in enumerate(tqdm(pdicts['uqidx'])):
+        for u, i in d.items():
+            s = f'{u} {cid} {i}\n'
+            fo.write(s)
     fo.close()	
     '''
     fo = open(f'data/{DIR}/{VERSION}/pdicts____uqidx.csv','r')
