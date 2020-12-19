@@ -417,19 +417,13 @@ class SAKTDataset(Dataset):
             u = idx
             useqidx = self.uidx[u]
             
-            # Pull out the max sequence of questions 
+            useqidx = self.uidx[u]
             useqidx = useqidx[-self.maxseq:]
             umat = self.dfmat[useqidx].astype(np.float32)
-            
-            # Add this for inference  - assuming one row at a a time
-            umat = np.concatenate((umat, row))
+            if u in tstdataset.test_matu:
+                umat = np.concatenate((umat, tstdataset.test_matu[u]))
+            umat = np.concatenate((umat, np.expand_dims(row, 0)))
             umat = umat[-self.maxseq:]
-            
-            '''
-            # Add this for inference 
-            umat = np.concatenate((umat, tstdataset.test_matu[u]))
-            umat = umat[-self.maxseq:]
-            '''
             
         else: 
             # Get index of user and question
