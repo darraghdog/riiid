@@ -748,6 +748,9 @@ for epoch in range(args.epochs):
     logger.info(f'Test AUC Score {auc_score:.5f}')
     auc_score = roc_auc_score(y_act, sum(predlstst[-bags:]) )
     logger.info(f'Bagged test AUC Score {auc_score:.5f}')
+    dumpobj(f'data/{DIR}/predlstst_{VERSION}.pk', predlstst)
+    dumpobj(f'data/{DIR}/yact_tst_{VERSION}.pk', y_act)
+    
 
 # Ideas
 # Add time since start of container
