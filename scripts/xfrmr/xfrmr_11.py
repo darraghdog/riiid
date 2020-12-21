@@ -337,11 +337,6 @@ pdicts['CARRYTASKFWD'] = ['counts___feat0', 'avgcorrect___feat0',  \
 pdicts['CONTCOLS'] = ['timestamp', 'prior_question_elapsed_time', 'prior_question_had_explanation', \
             'answered_correctly_avg_c', 'answered_correctly_ct_c', 'attempts_avg_c', \
             'task_container_cts', 'lecture_ct','lecture_lag'] + FEATCOLS
-pdicts['INTCOLS'] = list(set(['prior_question_had_explanation'] + \
-                        list(set(pdicts['MODCOLS']) - set(pdicts['CONTCOLS']))))
-
-pdicts['MODCOLS'] = [c for c in pdicts['MODCOLS'] if c not in pdicts['INTCOLS']] + pdicts['INTCOLS']
-    
 pdicts['NOPAD'] = ['prior_question_elapsed_time', 'prior_question_had_explanation', \
              'timestamp', 'content_type_id', 'task_container_cts'] + pdicts['CONTCOLS']
     
@@ -387,11 +382,10 @@ if args.dumpdata:
 #logger.info(f'Max vals valid \n\n{valid.max()}')
 
 class SAKTDataset(Dataset):
-    def __init__(self, data, basedf, cols, padvals, extracols, carryfwdcols, intcols, 
+    def __init__(self, data, basedf, cols, padvals, extracols, carryfwdcols, 
                  maxseq = args.maxseq, has_target = True, submit = False): 
         super(SAKTDataset, self).__init__()
         
-        self.intcols = intcols
         self.cols = cols
         self.extracols = extracols
         self.carryfwd = carryfwdcols
@@ -415,10 +409,7 @@ class SAKTDataset(Dataset):
         
         self.data[['timestamp','prior_question_elapsed_time']] = \
             self.data[['timestamp','prior_question_elapsed_time']] / 1000
-            
-        self.floatcols = [c for c in self.cols if c not in self.intcols]
-        self.dfmat = self.data[self.floatcols].values.astype(np.float32)
-        self.dfmatint = self.data[self.intcols].values.astype(np.uint16)
+        self.dfmat = self.data[self.cols].values.astype(np.float32)
         
         self.users = self.data.user_id.unique() 
         del self.data
@@ -450,9 +441,7 @@ class SAKTDataset(Dataset):
             if u in self.uidx:
                 useqidx = self.uidx[u]
                 useqidx = useqidx[-self.maxseq:]
-                umat1 = np.concatenate((self.dfmat[useqidx].astype(np.float32), 
-                                        self.dfmatint[useqidx].astype(np.float32)), 1)
-                umatls.append(umat1)
+                umatls.append(self.dfmat[useqidx].astype(np.float32))
             if u in self.test_matu:
                 umatls.append(self.test_matu[u])
             if len(umatls) > 0:
@@ -473,8 +462,7 @@ class SAKTDataset(Dataset):
             container_buffer = 6
             useqidx = useqidx[:cappos][-self.maxseq-container_buffer:]
             # Pull out the sequence for the user
-            umat = np.concatenate((self.dfmat[useqidx].astype(np.float32), 
-                                   self.dfmatint[useqidx].astype(np.float32)), 1)
+            umat = self.dfmat[useqidx].astype(np.float32)
             
             # Add dummy for task container
             dummy_answer = self.task_container_id[useqidx[-1]] == self.task_container_id[useqidx]
@@ -635,7 +623,7 @@ pdicts['maargs'] = maargs = {'modcols':pdicts['MODCOLS'],
           'contcols':pdicts['CONTCOLS'], 
           'padvals':pdicts['PADVALS'], 
           'extracols':pdicts['EXTRACOLS']}
-model = LearnNet(**maargs)
+model = self = LearnNet(**maargs)
 model.to(device)
 
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
@@ -643,7 +631,6 @@ pdicts['daargs'] = daargs = {'cols':pdicts['MODCOLS'],
           'padvals':pdicts['PADVALS'], 
           'carryfwdcols': pdicts['CARRYTASKFWD'],
           'extracols':pdicts['EXTRACOLS'], 
-          'intcols':pdicts['INTCOLS'],
           'maxseq': args.maxseq}
 trndataset = SAKTDataset(train, None, **daargs)
 valdataset = SAKTDataset(valid, train, **daargs)
