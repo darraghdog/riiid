@@ -553,6 +553,7 @@ class LearnNet(nn.Module):
                 self.emb_part.embedding_dim + self.emb_tag.embedding_dim + \
                 self.emb_lag_time.embedding_dim + self.emb_elapsed_time.embedding_dim + \
                 self.emb_cont_user_answer.embedding_dim + \
+                self.emb_lpart.embedding_dim + self.emb_ltag.embedding_dim + \
                 len(self.contcols)
         LSTM_UNITS = hidden
         
