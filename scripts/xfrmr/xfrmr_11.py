@@ -52,7 +52,6 @@ def add_user_feats(df, pdicts, update = True):
     contid = np.zeros((len(df), 1), dtype=np.uint8)
     qamat = np.zeros((len(df),2), dtype=np.float32)
     lect = np.zeros((len(df), 2), dtype=np.uint32)
-    lectcat = np.zeros((len(df), 2), dtype=np.uint32)
 
     itercols = ['user_id','answered_correctly', 'part', \
                     'prior_question_had_explanation', 'prior_question_elapsed_time', 'content_id', \
@@ -71,9 +70,6 @@ def add_user_feats(df, pdicts, update = True):
         if ctype==1:
             pdicts['count_u_lect_dict'][uidx] += 1
             pdicts['count_u_lect_timestamp'][uidx] = int(round(tstmp / 1000))
-            pdicts['lecture_logged'][uidx] = 1
-            pdicts['lecture_tag'][uidx] = ldict['tag'][cid] 
-            pdicts['lecture_part'][uidx] = ldict['part'][cid]
             continue
         
         try:
@@ -95,7 +91,6 @@ def add_user_feats(df, pdicts, update = True):
             
         lect[cnt] = pdicts['count_u_lect_dict'].item(uidx), \
             int(round(tstmp / 1000)) - pdicts['count_u_lect_timestamp'].item(uidx)
-        lectcat[cnt] = pdicts['lecture_tag'].item(uidx), pdicts['lecture_part'].item(uidx)
         
         acsu[cnt] = pdicts['answered_correctly_sum_u_dict'].item(uidx)
         cu[cnt] = pdicts['count_u_dict'].item(uidx)
@@ -127,11 +122,6 @@ def add_user_feats(df, pdicts, update = True):
                 #pdicts['answered_correctly_sum_b_dict'][uidx] += 1
                 pdicts['content_id_answered_correctly_sum_u_dict'][uqidx] += 1
             #pdicts['track_b'][uidx] = bid
-            
-            if pdicts['lecture_logged'][uidx] == 1:
-                pdicts['lecture_tag'][uidx] = 0
-                pdicts['lecture_part'][uidx] = 0
-                pdicts['lecture_logged'][uidx] = 1
                 
     #countmat = np.transpose(np.stack([cu, cidcu, cb]), (1,0)).astype(np.float32)
     #correctmat = np.transpose(np.stack([acsu,  cidacsu, acsb]), (1,0)).astype(np.float32)
@@ -140,12 +130,11 @@ def add_user_feats(df, pdicts, update = True):
     avgcorrectmat = correctmat / (countmat + 0.001).astype(np.float32)
     acsumat = np.expand_dims(acsu, 1).astype(np.float32)
     lect = lect.astype(np.float32)
-    lectcat = lectcat.astype(np.float32)
-    outmat = np.concatenate((countmat, avgcorrectmat, acsumat, qamat, lect, lectcat), 1)
+    outmat = np.concatenate((countmat, avgcorrectmat, acsumat, qamat, lect), 1)
     cols = [f'counts___feat{i}' for i in range(2)] + \
                 [f'avgcorrect___feat{i}' for i in range(2)] + \
                     ['cid_answered_correctly'] + [f'rank_stats_{i}' for i in range(2)] + \
-                        ['lecture_ct','lecture_lag', 'lecture_tag','lecture_part']
+                        ['lecture_ct','lecture_lag']
     outdf = pd.DataFrame(outmat, columns = cols, index = df.index.tolist())
     df = pd.concat([df, outdf], 1)
     
@@ -197,7 +186,7 @@ valid = valid.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
 ldf = pd.read_csv('data/lectures.csv')
 ldf.type_of = ldf.type_of.str.replace(' ', '_')
 ldict = ldf.set_index('lecture_id').to_dict()
-#lecture_types = [t for t in ldf.type_of.unique() if t!= 'starter']
+lecture_types = [t for t in ldf.type_of.unique() if t!= 'starter']
 
 
 qdf = pd.read_csv('data/questions.csv')
@@ -257,7 +246,7 @@ valid['task_container_cts'] = valid[taskcols][::-1].groupby(taskcols).cumcount()
 qidx = train.content_type_id == False
 n_users = int(len(train[qidx].user_id.unique()) * 1.2)
 n_users_ques = int(len(train[qidx][['user_id', 'content_id']].drop_duplicates()) * 1.2)
-u_int_cols = ['answered_correctly_sum_u_dict', 'count_u_dict', 'lecture_tag', 'lecture_part', 'lecture_logged', \
+u_int_cols = ['answered_correctly_sum_u_dict', 'count_u_dict', \
               'content_id_lag',  'pexp_count_u_dict', 'count_u_lect_dict', 'count_u_lect_timestamp'] #'track_b', 'answered_correctly_sum_b_dict',  'count_b_dict', 
 u_float_cols = ['userRatioCum', 'userAvgRatioCum', 'qaRatiocum', 'qaRatioCorrectcum', ]
 uq_int_cols = ['content_id_answered_correctly_sum_u_dict', 'content_id_count_u_dict']
@@ -321,7 +310,7 @@ FEATCOLS = ['counts___feat0', 'avgcorrect___feat0', 'counts___feat1', 'avgcorrec
 
 
 pdicts['MODCOLS'] = ['content_id', 'content_type_id', 'prior_question_elapsed_time', \
-           'prior_question_had_explanation', 'task_container_id', 'lecture_tag', 'lecture_part', \
+           'prior_question_had_explanation', 'task_container_id', \
             'timestamp', 'part', 'bundle_id', 'task_container_cts', \
                 'answered_correctly', 'user_answer', 'correct_answer', 'content_user_answer', 
                 'answered_correctly_avg_c', 'answered_correctly_ct_c', 'attempts_avg_c', 'lecture_ct','lecture_lag'] \
@@ -531,8 +520,6 @@ class LearnNet(nn.Module):
         self.emb_bundle_id = nn.Embedding(13526, 32)
         self.emb_part = nn.Embedding(9, 4)
         self.emb_tag= nn.Embedding(190, 16)
-        self.emb_lpart = nn.Embedding(9, 4)
-        self.emb_ltag= nn.Embedding(190, 16)
         self.emb_lag_time = nn.Embedding(301, 16)
         self.emb_elapsed_time = nn.Embedding(301, 16)
         self.emb_cont_user_answer = nn.Embedding(13526 * 4, 5)
@@ -553,7 +540,6 @@ class LearnNet(nn.Module):
                 self.emb_part.embedding_dim + self.emb_tag.embedding_dim + \
                 self.emb_lag_time.embedding_dim + self.emb_elapsed_time.embedding_dim + \
                 self.emb_cont_user_answer.embedding_dim + \
-                self.emb_lpart.embedding_dim + self.emb_ltag.embedding_dim + \
                 len(self.contcols)
         LSTM_UNITS = hidden
         
@@ -586,8 +572,6 @@ class LearnNet(nn.Module):
             self.emb_bundle_id(  x[:,:, self.modcols.index('bundle_id')].long()  ),
             self.emb_cont_user_answer(  x[:,:, self.modcols.index('content_user_answer')].long()  ),
             self.emb_part(  x[:,:, self.modcols.index('part')].long()  ), 
-            self.emb_lpart(  x[:,:, self.modcols.index('lecture_part')].long()  ), 
-            self.emb_ltag(  x[:,:, self.modcols.index('lecture_tag')].long()  ) , 
             (self.emb_tag(x[:,:, self.tag_idx].long()) * self.tag_wts).sum(2),
             self.emb_lag_time(   x[:,:, self.modcols.index('lag_time_cat')].long()   ), 
             self.emb_elapsed_time(  x[:,:, self.modcols.index('elapsed_time_cat')].long()  )
@@ -623,7 +607,7 @@ pdicts['maargs'] = maargs = {'modcols':pdicts['MODCOLS'],
           'contcols':pdicts['CONTCOLS'], 
           'padvals':pdicts['PADVALS'], 
           'extracols':pdicts['EXTRACOLS']}
-model = self = LearnNet(**maargs)
+model = LearnNet(**maargs)
 model.to(device)
 
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
