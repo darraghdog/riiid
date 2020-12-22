@@ -177,7 +177,7 @@ logger.info(args)
 device = 'cpu' if platform.system() == 'Darwin' else 'cuda'
 CUT=0
 DIR=args.dir#'val'
-VERSION='V13'#args.version
+VERSION='V12A'#args.version
 debug = False
 validaten_flg = False
 
@@ -511,36 +511,12 @@ class SAKTDataset(Dataset):
         umask[-useqlen:] = 1
         
         return umat, umask, target
-
-'''
-class FFN(nn.Module):
-    def __init__(self, state_size=200):
-        super(FFN, self).__init__()
-        self.state_size = state_size
-
-        self.lr1 = nn.Linear(state_size, state_size)
-        self.relu = nn.ReLU()
-        self.lr2 = nn.Linear(state_size, state_size)
-        self.dropout = nn.Dropout(0.2)
     
-    def forward(self, x):
-        x = self.lr1(x)
-        x = self.relu(x)
-        x = self.lr2(x)
-        return self.dropout(x)
-
-def future_mask(seq_length):
-    future_mask = np.triu(np.ones((seq_length, seq_length)), k=1).astype('bool')
-    return torch.from_numpy(future_mask)
-'''
-
-
-
-class XLMEduNet(nn.Module):
+class LearnNet(nn.Module):
     def __init__(self, modcols, contcols, padvals, extracols, 
                  device = device, dropout = 0.2, model_type = args.model, 
                  hidden = args.hidden):
-        super(XLMEduNet, self).__init__()
+        super(LearnNet, self).__init__()
         
         self.dropout = nn.Dropout(dropout)
         
@@ -559,10 +535,116 @@ class XLMEduNet(nn.Module):
         self.emb_ltag= nn.Embedding(190, 16)
         self.emb_lag_time = nn.Embedding(301, 16)
         self.emb_elapsed_time = nn.Embedding(301, 16)
-        self.emb_cont_user_answer = nn.Embedding(13526 * 4, 8)
-        self.pos_embedding = nn.Embedding(args.maxseq, 16)
+        self.emb_cont_user_answer = nn.Embedding(13526 * 4, 5)
             
-        self.tag_idx = torch.tensor(['tag' == i[:-1] for i in self.modcols])
+        self.tag_idx = torch.tensor(['tag' in i for i in self.modcols])
+        self.tag_wts = torch.ones((sum(self.tag_idx), 16))  / sum(self.tag_idx)
+        self.tag_wts = nn.Parameter(self.tag_wts)
+        self.tag_wts.requires_grad = True
+        self.cont_wts = nn.Parameter( torch.ones(len(self.contcols)) )
+        self.cont_wts.requires_grad = True
+        
+        self.cont_idx = [self.modcols.index(c) for c in self.contcols]
+        
+        self.embedding_dropout = SpatialDropout(dropout)
+        
+        IN_UNITS = \
+                self.emb_content_id.embedding_dim + self.emb_bundle_id.embedding_dim + \
+                self.emb_part.embedding_dim + self.emb_tag.embedding_dim + \
+                self.emb_lag_time.embedding_dim + self.emb_elapsed_time.embedding_dim + \
+                self.emb_cont_user_answer.embedding_dim + \
+                self.emb_lpart.embedding_dim + self.emb_ltag.embedding_dim + \
+                len(self.contcols)
+        LSTM_UNITS = hidden
+        
+        if self.model_type == 'lstm':
+            self.seqnet = nn.LSTM(IN_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
+        if self.model_type == 'gru':
+            self.seqnet = nn.GRU(IN_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
+        if self.model_type == 'xlm':
+            self.xcfg = XLMConfig()
+            self.xcfg.causal = True
+            self.xcfg.emb_dim = LSTM_UNITS
+            self.xcfg.max_position_embeddings = args.maxseq
+            self.xcfg.n_layers = args.n_layers
+            self.xcfg.n_heads = args.n_heads
+            self.xcfg.return_dict = False
+            self.seqnet  = XLMModel(self.xcfg)
+            
+        self.linear1 = nn.Linear(LSTM_UNITS, LSTM_UNITS//2)
+        self.bn0 = nn.BatchNorm1d(num_features=len(self.contcols))
+        self.bn1 = nn.BatchNorm1d(num_features=LSTM_UNITS)
+        self.bn2 = nn.BatchNorm1d(num_features=LSTM_UNITS//2)
+        
+        self.linear_out = nn.Linear(LSTM_UNITS//2, 1)
+        
+    def forward(self, x, m = None):
+        
+        # Categroical embeddings
+        embcat = torch.cat([
+            self.emb_content_id(  x[:,:, self.modcols.index('content_id')].long()  ),
+            self.emb_bundle_id(  x[:,:, self.modcols.index('bundle_id')].long()  ),
+            self.emb_cont_user_answer(  x[:,:, self.modcols.index('content_user_answer')].long()  ),
+            self.emb_part(  x[:,:, self.modcols.index('part')].long()  ), 
+            self.emb_lpart(  x[:,:, self.modcols.index('lecture_part')].long()  ), 
+            self.emb_ltag(  x[:,:, self.modcols.index('lecture_tag')].long()  ) , 
+            (self.emb_tag(x[:,:, self.tag_idx].long()) * self.tag_wts).sum(2),
+            self.emb_lag_time(   x[:,:, self.modcols.index('lag_time_cat')].long()   ), 
+            self.emb_elapsed_time(  x[:,:, self.modcols.index('elapsed_time_cat')].long()  )
+            ] #+ [self.emb_tag(x[:,:, ii.item()].long()) for ii in torch.where(self.tag_idx)[0]]
+            , 2)
+        embcat = self.embedding_dropout(embcat)
+        
+        ## Continuous
+        contmat  = x[:,:, self.cont_idx]
+        contmat = self.bn0(contmat.permute(0,2,1)) .permute(0,2,1)
+        contmat = contmat * self.cont_wts
+        
+        # Weighted sum of tags - hopefully good weights are learnt
+        xinp = torch.cat([embcat, contmat], 2)
+        
+        if self.model_type == 'xlm':
+            xinp = self.linearx(xinp)
+            inputs = {'input_ids': None, 'inputs_embeds': xinp, 'attention_mask': m}
+            hidden = self.seqnet(**inputs)
+        else:
+            hidden, _ = self.seqnet(xinp)
+        # Take last hidden unit
+        hidden = hidden[:,-1,:]
+        hidden = self.dropout( self.bn1( hidden) )
+        hidden  = F.relu(self.linear1(hidden))
+        hidden = self.dropout(self.bn2(hidden))
+        out = self.linear_out(hidden).flatten()
+        
+        return out
+    
+
+class LearnNet2(nn.Module):
+    def __init__(self, modcols, contcols, padvals, extracols, 
+                 device = device, dropout = 0.2, model_type = args.model, 
+                 hidden = args.hidden):
+        super(LearnNet2, self).__init__()
+        
+        self.dropout = nn.Dropout(dropout)
+        
+        self.padvals = padvals
+        self.extracols = extracols
+        self.modcols = modcols + extracols
+        self.contcols = contcols
+        self.embcols = ['content_id', 'part']
+        self.model_type = model_type
+        
+        self.emb_content_id = nn.Embedding(13526, 32)
+        self.emb_bundle_id = nn.Embedding(13526, 32)
+        self.emb_part = nn.Embedding(9, 4)
+        self.emb_tag= nn.Embedding(190, 16)
+        self.emb_lpart = nn.Embedding(9, 4)
+        self.emb_ltag= nn.Embedding(190, 16)
+        self.emb_lag_time = nn.Embedding(301, 16)
+        self.emb_elapsed_time = nn.Embedding(301, 16)
+        self.emb_cont_user_answer = nn.Embedding(13526 * 4, 32)
+            
+        self.tag_idx = torch.tensor(['tag' in i for i in self.modcols])
         self.tag_wts = torch.ones((sum(self.tag_idx), 16))  / sum(self.tag_idx)
         self.tag_wts = nn.Parameter(self.tag_wts)
         self.tag_wts.requires_grad = True
@@ -576,56 +658,50 @@ class XLMEduNet(nn.Module):
         IN_UNITSQ = \
                 self.emb_content_id.embedding_dim + self.emb_bundle_id.embedding_dim + \
                 self.emb_part.embedding_dim + self.emb_tag.embedding_dim + \
-                    self.emb_lpart.embedding_dim + self.emb_ltag.embedding_dim + \
-                        self.pos_embedding.embedding_dim
+                    self.emb_lpart.embedding_dim + self.emb_ltag.embedding_dim
         IN_UNITSQA = self.emb_lag_time.embedding_dim + self.emb_elapsed_time.embedding_dim + \
                 self.emb_cont_user_answer.embedding_dim + \
-                self.pos_embedding.embedding_dim + len(self.contcols)
+                len(self.contcols)
         LSTM_UNITS = hidden
         
-        self.xcfg = XLMConfig()
-        self.xcfg.causal = True
-        self.xcfg.emb_dim = IN_UNITSQ
-        self.xcfg.max_position_embeddings = args.maxseq
-        self.xcfg.n_layers = args.n_layers
-        self.xcfg.n_heads = args.n_heads
-        self.xcfg.dropout = dropout
-        self.xcfg.return_dict = False
-        self.seqnetq  = XLMModel(self.xcfg)
-        self.xcfgqa = self.xcfg
-        self.xcfgqa.emb_dim = IN_UNITSQ + IN_UNITSQA 
-        self.seqnetqa  = XLMModel(self.xcfgqa)
-        
-        #self.linear1 = nn.Linear(LSTM_UNITS, LSTM_UNITS//2)
+        self.seqnet1 = nn.LSTM(IN_UNITSQ, LSTM_UNITS, bidirectional=False, batch_first=True)
+        self.seqnet2 = nn.LSTM(IN_UNITSQA + LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
+            
+        self.linear1 = nn.Linear(LSTM_UNITS, LSTM_UNITS//2)
         self.bn0 = nn.BatchNorm1d(num_features=len(self.contcols))
         self.bn1 = nn.BatchNorm1d(num_features=LSTM_UNITS)
         self.bn2 = nn.BatchNorm1d(num_features=LSTM_UNITS//2)
         
-        self.linear_out = nn.Linear(IN_UNITSQ + IN_UNITSQA , 1)
+        self.linear_out = nn.Linear(LSTM_UNITS//2, 1)
         
     def forward(self, x, m = None):
-        
-        # Position ID
-        bsize, seqlen, dim = x.shape 
-        pos_id = torch.arange(seqlen).repeat(bsize).reshape(bsize, seqlen).to(device)
         
         embcatq = torch.cat([
             self.emb_content_id(  x[:,:, self.modcols.index('content_id')].long()  ),
             self.emb_bundle_id(  x[:,:, self.modcols.index('bundle_id')].long()  ),
+            #self.emb_cont_user_answer(  x[:,:, self.modcols.index('content_user_answer')].long()  ),
             self.emb_part(  x[:,:, self.modcols.index('part')].long()  ), 
             self.emb_lpart(  x[:,:, self.modcols.index('lecture_part')].long()  ), 
             self.emb_ltag(  x[:,:, self.modcols.index('lecture_tag')].long()  ) , 
             (self.emb_tag(x[:,:, self.tag_idx].long()) * self.tag_wts).sum(2),
-            self.pos_embedding( pos_id  ), 
-            ], 2)
+            #self.emb_lag_time(   x[:,:, self.modcols.index('lag_time_cat')].long()   ), 
+            #self.emb_elapsed_time(  x[:,:, self.modcols.index('elapsed_time_cat')].long()  )
+            ] #+ [self.emb_tag(x[:,:, ii.item()].long()) for ii in torch.where(self.tag_idx)[0]]
+            , 2)
         
         # Categroical embeddings
         embcatqa = torch.cat([
+            #self.emb_content_id(  x[:,:, self.modcols.index('content_id')].long()  ),
+            #self.emb_bundle_id(  x[:,:, self.modcols.index('bundle_id')].long()  ),
             self.emb_cont_user_answer(  x[:,:, self.modcols.index('content_user_answer')].long()  ),
+            #self.emb_part(  x[:,:, self.modcols.index('part')].long()  ), 
+            #self.emb_lpart(  x[:,:, self.modcols.index('lecture_part')].long()  ), 
+            #self.emb_ltag(  x[:,:, self.modcols.index('lecture_tag')].long()  ) , 
+            #(self.emb_tag(x[:,:, self.tag_idx].long()) * self.tag_wts).sum(2),
             self.emb_lag_time(   x[:,:, self.modcols.index('lag_time_cat')].long()   ), 
-            self.emb_elapsed_time(  x[:,:, self.modcols.index('elapsed_time_cat')].long()  ),
-            self.pos_embedding( pos_id  ), 
-            ], 2)
+            self.emb_elapsed_time(  x[:,:, self.modcols.index('elapsed_time_cat')].long()  )
+            ] #+ [self.emb_tag(x[:,:, ii.item()].long()) for ii in torch.where(self.tag_idx)[0]]
+            , 2)
         embcatq = self.embedding_dropout(embcatq)
         embcatqa = self.embedding_dropout(embcatqa)
         
@@ -634,14 +710,17 @@ class XLMEduNet(nn.Module):
         contmat = self.bn0(contmat.permute(0,2,1)) .permute(0,2,1)
         contmat = contmat * self.cont_wts
         
-        # Transformer
-        inputs = {'input_ids': None, 'inputs_embeds': embcatq, 'attention_mask': m}
-        hidden = self.seqnetq(**inputs)[0]
-        embcatqa = torch.cat([hidden, embcatqa, contmat], 2)
-        inputs = {'input_ids': None, 'inputs_embeds': embcatqa, 'attention_mask': m}
-        hidden = self.seqnetqa(**inputs)[0]
+        # Weighted sum of tags - hopefully good weights are learnt
+        xinpq = embcatq
+        hiddenq, _ = self.seqnet1(xinpq)
+        xinpqa = torch.cat([embcatqa, contmat, hiddenq], 2)
+        hiddenqa, _ = self.seqnet2(xinpqa)
         
         # Take last hidden unit
+        hidden = hiddenqa[:,-1,:]
+        hidden = self.dropout( self.bn1( hidden) )
+        hidden  = F.relu(self.linear1(hidden))
+        hidden = self.dropout(self.bn2(hidden))
         out = self.linear_out(hidden).flatten()
         
         return out
@@ -653,7 +732,8 @@ pdicts['maargs'] = maargs = {'modcols':pdicts['MODCOLS'],
           'extracols':pdicts['EXTRACOLS']}
 # model = self = LearnNet(**maargs)
 # model.to(device)
-model = XLMEduNet(**maargs)
+
+model = LearnNet2(**maargs)
 model.to(device)
 
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
@@ -743,7 +823,7 @@ for epoch in range(args.epochs):
     y_predls = []
     y_act = valid['answered_correctly'].values
     model.eval()
-    torch.save(model.state_dict(), f'data/{DIR}/{args.model}_{DIR}_{VERSION}_hidden{args.hidden}_ep{epoch}.bin')
+    torch.save(model.state_dict(), f'data/{DIR}/{args.model}_{VERSION}_hidden{args.hidden}_ep{epoch}.bin')
     for step, batch in pbarval:
         x, m, y = batch
         x = x.to(device, dtype=torch.float)
@@ -758,9 +838,6 @@ for epoch in range(args.epochs):
     logger.info(f'Valid AUC Score {auc_score:.5f}')
     auc_score = roc_auc_score(y_act, sum(predls[-bags:]) )
     logger.info(f'Bagged valid AUC Score {auc_score:.5f}')
-    dumpobj(f'data/{DIR}/predlstst_{VERSION}.pk', predls)
-    keepvalcols = ['row_id', 'user_id', 'content_id', 'answered_correctly']
-    dumpobj(f'data/{DIR}/yact_tst_{VERSION}.pk', valid[keepvalcols]  )
 
 
 # Ideas
