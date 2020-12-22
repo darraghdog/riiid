@@ -642,7 +642,7 @@ class XLMEduNet(nn.Module):
         hidden = self.seqnetqa(**inputs)[0]
         
         # Take last hidden unit
-        out = self.linear_out(hidden[:,-1,:-1]).flatten()
+        out = self.linear_out(hidden[:,-1,:]).flatten()
         
         return out
 
