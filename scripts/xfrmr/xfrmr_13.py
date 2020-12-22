@@ -589,7 +589,7 @@ class XLMEduNet(nn.Module):
         self.xcfg.max_position_embeddings = args.maxseq
         self.xcfg.n_layers = args.n_layers
         self.xcfg.n_heads = args.n_heads
-        self.cfg.dropout = dropout
+        self.xcfg.dropout = dropout
         self.xcfg.return_dict = False
         self.seqnetq  = XLMModel(self.xcfg)
         self.xcfgqa = self.xcfg
