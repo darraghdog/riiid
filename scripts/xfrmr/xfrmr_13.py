@@ -562,7 +562,7 @@ class XLMEduNet(nn.Module):
         self.emb_cont_user_answer = nn.Embedding(13526 * 4, 8)
         self.pos_embedding = nn.Embedding(args.maxseq, 16)
             
-        self.tag_idx = torch.tensor(['tag' in i for i in self.modcols])
+        self.tag_idx = torch.tensor(['tag' == i[:-1] for i in self.modcols])
         self.tag_wts = torch.ones((sum(self.tag_idx), 16))  / sum(self.tag_idx)
         self.tag_wts = nn.Parameter(self.tag_wts)
         self.tag_wts.requires_grad = True
@@ -589,7 +589,7 @@ class XLMEduNet(nn.Module):
         self.xcfg.max_position_embeddings = args.maxseq
         self.xcfg.n_layers = args.n_layers
         self.xcfg.n_heads = args.n_heads
-        self.xcfg.dropout = dropout
+        self.cfg.dropout = dropout
         self.xcfg.return_dict = False
         self.seqnetq  = XLMModel(self.xcfg)
         self.xcfgqa = self.xcfg
