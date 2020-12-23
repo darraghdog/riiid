@@ -689,8 +689,10 @@ pdicts['maargs'] = maargs = {'modcols':pdicts['MODCOLS'],
 model = XLMEduNet(**maargs)
 model.to(device)
 if args.load_weights is not None:
+    logger.info(f'Load weights {args.load_weights}')
     checkpoint = torch.load(args.load_weights, map_location=torch.device(device))
     model.load_state_dict(checkpoint)
+    logger.info(f'Load weights done.')
 
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
 pdicts['daargs'] = daargs = {'cols':pdicts['MODCOLS'], 
