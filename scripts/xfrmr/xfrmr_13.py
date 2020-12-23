@@ -40,6 +40,38 @@ pd.set_option('display.width', 1000)
 pd.set_option('display.float_format', lambda x: '%.3f' % x)
 logger = get_logger('Train', 'INFO')
 
+'''
+OUTDIR = f'{PATH}/data/valfull/V12'
+tstdataset = loadobj('/Users/dhanley//Downloads/alldataset_V11_tail.pk')
+dir(tstdataset)
+tstdataset.quidx = None
+tstdataset.task_container_id = None
+fo = open(f'{OUTDIR}/alldataset__manual_V11_uidx.csv','w')
+for t, (u, posls) in enumerate(tqdm(tstdataset.uidx.items())):
+    for pos in posls:
+        s = f'{u} {pos}\n'
+        fo.write(s)
+fo.close()
+tstdataset.uidx = None
+dumpobj( f'{OUTDIR}/alldataset__manual_V11_tstdataset.pk', tstdataset)
+'''
+'''
+# To load
+
+uidxdf = pd.read_csv(f'{OUTDIR}/alldataset__manual_V11_uidx.csv', sep = ' ', 
+                     names= ['user_id', 'idx']).set_index('user_id').astype(np.uint32)
+%timeit uidxdf.loc[115].idx.tolist()
+%timeit uidxdf.loc[2147482888].idx.tolist()
+
+for k,v in  tstdataset.uidx.items():
+    idices = uidxdf.loc[k].idx.tolist()
+    if not isinstance(idices, list):
+        idices = [idices]
+    if v != idices:
+        print(k)
+        break
+'''
+
 # funcs for user stats with loop
 def add_user_feats(df, pdicts, update = True):
     
@@ -167,12 +199,12 @@ arg('--dumpdata', type=bool, default=0)
 arg('--bags', type=int, default=4)
 arg('--model', type=str, default='lstm')
 arg('--label-smoothing', type=float, default=0.01)
+arg('--load_weights', type=str, default=None)
 arg('--dir', type=str, default='val')
 #arg('--version', type=str, default='V05')
 args = parser.parse_args()
 args.dumpdata = bool(args.dumpdata)
 logger.info(args)
-
 
 device = 'cpu' if platform.system() == 'Darwin' else 'cuda'
 CUT=0
@@ -190,7 +222,7 @@ logger.info(f'Loaded columns {", ".join(FILTCOLS)}')
 valid = pd.read_feather(f'data/{DIR}/cv{CUT+1}_valid.feather')[FILTCOLS]
 train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS]
 
-train = train.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
+train = train.sort_values(['user_id', 'timestamp']).reset_index(drop = True).tail(10**6)
 valid = valid.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
 
 # Joins questions
@@ -380,6 +412,7 @@ if args.dumpdata:
 #logger.info(f'Na vals valid \n\n{valid.isna().sum()}')
 #logger.info(f'Max vals train \n\n{train.max()}')
 #logger.info(f'Max vals valid \n\n{valid.max()}')
+    
 
 class SAKTDataset(Dataset):
     def __init__(self, data, basedf, cols, padvals, extracols, carryfwdcols, 
@@ -655,6 +688,9 @@ pdicts['maargs'] = maargs = {'modcols':pdicts['MODCOLS'],
 # model.to(device)
 model = XLMEduNet(**maargs)
 model.to(device)
+if args.load_weights is not None:
+    checkpoint = torch.load(args.load_weights, map_location=torch.device(device))
+    model.load_state_dict(checkpoint)
 
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
 pdicts['daargs'] = daargs = {'cols':pdicts['MODCOLS'], 
@@ -743,7 +779,10 @@ for epoch in range(args.epochs):
     y_predls = []
     y_act = valid['answered_correctly'].values
     model.eval()
-    torch.save(model.state_dict(), f'data/{DIR}/{args.model}_{DIR}_{VERSION}_hidden{args.hidden}_ep{epoch}.bin')
+    if args.load_weights is None:
+        torch.save(model.state_dict(), f'data/{DIR}/{args.model}_{DIR}_{VERSION}_hidden{args.hidden}_ep{epoch}.bin')
+    else:
+        torch.save(model.state_dict(), f'data/{DIR}/{args.model}_finetune_{DIR}_{VERSION}_hidden{args.hidden}_ep{epoch}.bin')
     for step, batch in pbarval:
         x, m, y = batch
         x = x.to(device, dtype=torch.float)
