@@ -222,7 +222,7 @@ logger.info(f'Loaded columns {", ".join(FILTCOLS)}')
 valid = pd.read_feather(f'data/{DIR}/cv{CUT+1}_valid.feather')[FILTCOLS]
 train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS]
 
-train = train.sort_values(['user_id', 'timestamp']).reset_index(drop = True).tail(10**6)
+train = train.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
 valid = valid.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
 
 # Joins questions
@@ -300,7 +300,7 @@ pdicts =  {**dict((col, np.zeros(n_users, dtype= np.uint32)) for col in u_int_co
          **dict((col, np.zeros(n_users_ques, dtype= np.uint8)) for col in uq_int_cols), 
          **{'qaRatio' : qaRatio, 'qaCorrect': qaCorrect}}
 
-
+pdicts['count_u_dict'].shape
 cid_udict = train[qidx][['user_id', 'content_id']].drop_duplicates() \
                             .reset_index(drop=True).reset_index().groupby('content_id') \
                             .apply(lambda x : x.set_index('user_id')['index'].to_dict()  )
