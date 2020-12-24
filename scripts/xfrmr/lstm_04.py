@@ -772,7 +772,7 @@ trndataset = SAKTDataset(train, None, **daargs)
 valdataset = SAKTDataset(valid, train, **daargs)
 loaderargs = {'num_workers' : args.workers}
 wtdsampler = WeightedRandomSampler(trndataset.sampwts, int(trndataset.sampwts.sum()), replacement = False)
-trnloader = DataLoader(trndataset, sampler = wtdsampler, **loaderargs)
+trnloader = DataLoader(trndataset, sampler = wtdsampler, batch_size = args.batchsize, **loaderargs)
 valloader = DataLoader(valdataset, shuffle=False, batch_size = args.batchsize , **loaderargs)
 x, m, y = next(iter(trnloader))
 
@@ -810,9 +810,8 @@ for epoch in range(args.epochs):
                 total = len(trndataset)//args.batchsize, 
                 desc=f"Train epoch {epoch}", ncols=0)
     trn_loss = 0.
-    
     for step, batch in pbartrn:
-
+    
         optimizer.zero_grad()
         x, m, y = batch
         x = x.to(device, dtype=torch.float)
@@ -845,7 +844,7 @@ for epoch in range(args.epochs):
                              'last 1000': sum(trn_lossls) / len(trn_lossls) })
     
     pbarval = tqdm(enumerate(valloader), 
-                total = len(valdataset)//loaderargs['batch_size'], 
+                total = len(valdataset)//args.batchsize, 
                 desc=f"Valid epoch {epoch}", ncols=0)
     y_predls = []
     y_act = valid['answered_correctly'].values
