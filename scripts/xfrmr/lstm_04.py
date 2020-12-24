@@ -807,7 +807,7 @@ for epoch in range(args.epochs):
         param.requires_grad = True
     model.train()  
     pbartrn = tqdm(enumerate(trnloader), 
-                total = len(trndataset)//loaderargs['batch_size'], 
+                total = len(trndataset)//args.batchsize, 
                 desc=f"Train epoch {epoch}", ncols=0)
     trn_loss = 0.
     
