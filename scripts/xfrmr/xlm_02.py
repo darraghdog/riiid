@@ -691,7 +691,7 @@ pdicts['maargs'] = maargs = {'modcols':pdicts['MODCOLS'],
           'extracols':pdicts['EXTRACOLS']}
 # model = self = LearnNet(**maargs)
 # model.to(device)
-model = self = XLMEduNet(**maargs)
+model = XLMEduNet(**maargs)
 model.to(device)
 
 
@@ -768,11 +768,12 @@ for epoch in range(args.epochs):
         y = y.to(device, dtype=torch.float)
         x = torch.autograd.Variable(x, requires_grad=True)
         y = torch.autograd.Variable(y)
-        '''
+
         out = model(x, m)
         loss = criterion(out, y)
         loss.backward()
         optimizer.step()
+        
         '''
         with autocast():
             out = model(x, m)
@@ -785,6 +786,7 @@ for epoch in range(args.epochs):
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()
+        '''
         
         trn_loss += loss.item()
         trn_lossls.append(loss.item())
