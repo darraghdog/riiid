@@ -722,7 +722,7 @@ for epoch in range(args.epochs):
             out, outseq = model(x, m)
             loss1 = criterion(out, y)
             loss2 = criterionseq(outseq, yseq)
-            loss2 = (loss2 * m).sum() / m.sum()
+            loss2 = (   (loss2 * m).sum(1) / m.sum(1)   ).mean()
             loss = loss1 * m1 + loss2 * m2
             loss = loss / args.accum
 
