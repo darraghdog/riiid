@@ -719,8 +719,8 @@ for epoch in range(args.epochs):
         with autocast():
             out, outseq = model(x, m)
             loss1 = criterion(out, y)
-            loss2 = criterionseq(outseq[:,1:], yseq[:,:-1])
-            loss2 = (loss2 * m[:, :-1]).sum() / m[:, :-1].sum()
+            loss2 = criterionseq(outseq, yseq)
+            loss2 = (loss2 * m).sum() / m.sum()
             loss = loss1 * m1 + loss2 * m2
             loss = loss / args.accum
 
