@@ -162,6 +162,7 @@ arg('--epochs', type=int, default=12)
 arg('--maxseq', type=int, default=128)
 arg('--hidden', type=int, default=256)
 arg('--n_layers', type=int, default=2)
+arg('--accum', type=int, default=1)
 arg('--n_heads', type=int, default=8)
 arg('--dumpdata', type=bool, default=0)
 arg('--bags', type=int, default=4)
@@ -693,9 +694,9 @@ for epoch in range(args.epochs):
                 total = len(trndataset)//loaderargs['batch_size'], 
                 desc=f"Train epoch {epoch}", ncols=0)
     trn_loss = 0.
-    
+    m1, m2 = torch.tensor(0.75).to(device),  torch.tensor(0.25).to(device)
     for step, batch in pbartrn:
-
+        
         optimizer.zero_grad()
         x, m, y, yseq = batch
         x = x.to(device, dtype=torch.float)
@@ -717,7 +718,7 @@ for epoch in range(args.epochs):
             out, outseq = model(x, m)
             loss1 = criterion(out, y)
             loss2 = (criterionseq(outseq, yseq) * m).sum() / m.sum()
-            loss = loss1 * 0.75 + loss2 * 0.25 
+            loss = loss1 * m1 + loss2 * m2
             loss = loss / args.accum
 
         # Accumulates scaled gradients.
