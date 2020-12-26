@@ -168,6 +168,8 @@ arg('--dumpdata', type=bool, default=0)
 arg('--bags', type=int, default=4)
 arg('--model', type=str, default='lstm')
 arg('--label-smoothing', type=float, default=0.01)
+arg('--losswtfinal', type=float, default=0.75)
+arg('--losswtall', type=float, default=0.25)
 arg('--dropout', type=float, default=0.1)
 arg('--dir', type=str, default='val')
 #arg('--version', type=str, default='V05')
@@ -694,7 +696,9 @@ for epoch in range(args.epochs):
                 total = len(trndataset)//loaderargs['batch_size'], 
                 desc=f"Train epoch {epoch}", ncols=0)
     trn_loss = 0.
-    m1, m2 = torch.tensor(0.75).to(device),  torch.tensor(0.25).to(device)
+    trn_lossfinal = 0.
+    trn_lossall = 0.
+    m1, m2 = torch.tensor(args.losswtfinal).to(device),  torch.tensor(losswtall).to(device)
     for step, batch in pbartrn:
         
         optimizer.zero_grad()
@@ -732,9 +736,13 @@ for epoch in range(args.epochs):
             optimizer.zero_grad()
         
         trn_loss += loss.item()
+        trn_lossfinal += loss1.item()
+        trn_lossall += loss2.item()
         trn_lossls.append(loss.item())
         trn_lossls = trn_lossls[-1000:]
         pbartrn.set_postfix({'train loss': trn_loss / (step + 1), \
+                             'train lossfinal': trn_lossfinal / (step + 1), \
+                             'train lossall': trn_lossall / (step + 1), \
                              'last 1000': sum(trn_lossls) / len(trn_lossls) })
     
     pbarval = tqdm(enumerate(valloader), 
@@ -749,7 +757,7 @@ for epoch in range(args.epochs):
         x = x.to(device, dtype=torch.float)
         m = m.to(device, dtype=torch.long)
         with torch.no_grad():
-            out = model(x, m)
+            out, _ = model(x, m)
         y_predls.append(out.detach().cpu().numpy())
         
     y_pred = np.concatenate(y_predls)
