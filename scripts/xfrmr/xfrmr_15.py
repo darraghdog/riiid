@@ -699,7 +699,7 @@ for epoch in range(args.epochs):
     trn_lossfinal = 0.
     trn_lossall = 0.
     m1, m2 = torch.tensor(args.losswtfinal).to(device),  torch.tensor(args.losswtall).to(device)
-    losswts = torch.tensor(1 / (args.maxseq - np.arange(args.maxseq))).to(device)
+    losswts = torch.tensor(1 / (args.maxseq - np.arange(args.maxseq)) ** 2 ).to(device)
     for step, batch in pbartrn:
         
         optimizer.zero_grad()
