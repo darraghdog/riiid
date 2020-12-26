@@ -622,7 +622,7 @@ class LearnNet2(nn.Module):
         #hidden = torch.cat([hiddenqa[:,-1,:], hiddenqa2[:,-1,:]], 1)
         
         # Take sequence of all hidden units
-        hiddenseq = self.dropout( self.bn1seq(hiddenqa.permute(0,2,1))).permute(0,2,1)
+        hiddenseq = self.dropout( self.bn1seq(hiddenq.permute(0,2,1))).permute(0,2,1)
         hiddenseq  = F.relu(self.linear1seq(hiddenseq))
         hiddenseq = self.dropout(self.bn2seq(hiddenseq))
         outseq = self.linear_outseq(hiddenseq).squeeze(-1)
