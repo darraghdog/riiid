@@ -168,8 +168,8 @@ arg('--dumpdata', type=bool, default=0)
 arg('--bags', type=int, default=4)
 arg('--model', type=str, default='lstm')
 arg('--label-smoothing', type=float, default=0.01)
-arg('--losswtfinal', type=float, default=0.5)
-arg('--losswtall', type=float, default=0.5)
+arg('--losswtfinal', type=float, default=1.0)
+arg('--losswtall', type=float, default=0.0)
 arg('--dropout', type=float, default=0.1)
 arg('--dir', type=str, default='val')
 #arg('--version', type=str, default='V05')
@@ -557,7 +557,7 @@ class LearnNet2(nn.Module):
         IN_UNITSQ = \
                 self.emb_content_id.embedding_dim + self.emb_bundle_id.embedding_dim + \
                 self.emb_part.embedding_dim + self.emb_tag.embedding_dim + \
-                    self.emb_lpart.embedding_dim + self.emb_ltag.embedding_dim
+                    self.emb_lpart.embedding_dim + self.emb_ltag.embedding_dim + len(self.contcols)
         IN_UNITSQA = \
                 self.emb_cont_user_answer.embedding_dim + \
                 len(self.contcols) + self.emb_lag_time.embedding_dim + self.emb_elapsed_time.embedding_dim 
@@ -615,7 +615,8 @@ class LearnNet2(nn.Module):
         contmat = contmat * self.cont_wts
         
         # Weighted sum of tags - hopefully good weights are learnt
-        hiddenq, _ = self.seqnet1(embcatq)
+        xinpq = torch.cat([contmat, embcatq], 2)
+        hiddenq, _ = self.seqnet1(xinpq)
         xinpqa = torch.cat([embcatqa, contmat, hiddenq], 2)
         hiddenqa, _ = self.seqnet2(xinpqa)
         #xinpqa2 = torch.cat([embcatqa, embcatq, contmat, hiddenqa, ], 2)
