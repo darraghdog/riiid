@@ -717,9 +717,10 @@ for epoch in range(args.epochs):
         with autocast():
             out, outseq = model(x, m)
             loss1 = criterion(out, y)
-            loss2 = criterionseq(outseq, yseq)
-            loss2 = (loss2 * m).sum() / m.sum()
-            loss = loss1 * m1 + loss2 * m2
+            #loss2 = criterionseq(outseq, yseq)
+            #loss2 = (loss2 * m).sum() / m.sum()
+            #loss = loss1 * m1 + loss2 * m2
+            loss = loss1
             loss = loss / args.accum
 
         # Accumulates scaled gradients.
