@@ -191,8 +191,8 @@ FILTCOLS = ['row_id', 'user_id', 'content_id', 'content_type_id',  \
                        'timestamp', 'user_answer']
 logger.info(f'Loaded columns {", ".join(FILTCOLS)}')
 
-valid = pd.read_feather(f'data/{DIR}/cv{CUT+1}_valid.feather')[FILTCOLS]
-train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS]
+valid = pd.read_feather(f'data/{DIR}/cv{CUT+1}_valid.feather')[FILTCOLS].head(10000)
+train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS].tail(10**6)
 
 train = train.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
 valid = valid.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
@@ -698,7 +698,7 @@ for epoch in range(args.epochs):
     trn_loss = 0.
     trn_lossfinal = 0.
     trn_lossall = 0.
-    m1, m2 = torch.tensor(args.losswtfinal).to(device),  torch.tensor(losswtall).to(device)
+    m1, m2 = torch.tensor(args.losswtfinal).to(device),  torch.tensor(args.losswtall).to(device)
     for step, batch in pbartrn:
         
         optimizer.zero_grad()
