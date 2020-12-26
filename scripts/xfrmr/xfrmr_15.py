@@ -501,7 +501,7 @@ class SAKTDataset(Dataset):
         
         if self.has_target:
             target = umat[-1, self.yidx ]
-            targetseq = umat[:, self.yidx ]
+            targetseq = np.concatenate((np.ones(1) * 2, umat[:-1, self.yidx]), 0)
             umat[:, self.targetidx] = np.concatenate((self.padtarget, \
                                                       umat[:-1, self.targetidx]), 0)
         if target > 1:
@@ -717,10 +717,9 @@ for epoch in range(args.epochs):
         with autocast():
             out, outseq = model(x, m)
             loss1 = criterion(out, y)
-            #loss2 = criterionseq(outseq, yseq)
-            #loss2 = (loss2 * m).sum() / m.sum()
-            #loss = loss1 * m1 + loss2 * m2
-            loss = loss1
+            loss2 = criterionseq(outseq[:,1:], yseq[:,:-1])
+            loss2 = (loss2 * m[:, :-1]).sum() / m[:, :-1].sum()
+            loss = loss1 * m1 + loss2 * m2
             loss = loss / args.accum
 
         # Accumulates scaled gradients.
