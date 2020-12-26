@@ -500,18 +500,20 @@ class SAKTDataset(Dataset):
         
         if self.has_target:
             target = umat[-1, self.yidx ]
+            targetseq = umat[:, self.yidx ]
             umat[:, self.targetidx] = np.concatenate((self.padtarget, \
                                                       umat[:-1, self.targetidx]), 0)
         if target > 1:
             logger.info(f'{target}\t{u},{q}\t{idx}' )
         umat = torch.tensor(umat).float()
         target = torch.tensor(target)
+        targetseq = torch.tensor(targetseq)
         
         # Create mask
         umask = torch.zeros(umat.shape[0], dtype=torch.int8)
         umask[-useqlen:] = 1
         
-        return umat, umask, target
+        return umat, umask, target,targetseq
     
 class LearnNet2(nn.Module):
     def __init__(self, modcols, contcols, padvals, extracols, 
@@ -534,8 +536,8 @@ class LearnNet2(nn.Module):
         self.emb_tag= nn.Embedding(190, 16)
         self.emb_lpart = nn.Embedding(9, 4)
         self.emb_ltag= nn.Embedding(190, 16)
-        #self.emb_lag_time = nn.Embedding(301, 16)
-        #self.emb_elapsed_time = nn.Embedding(301, 16)
+        self.emb_lag_time = nn.Embedding(301, 16)
+        self.emb_elapsed_time = nn.Embedding(301, 16)
         self.emb_cont_user_answer = nn.Embedding(13526 * 4, 16)
             
         self.tag_idx = torch.tensor(['tag' in i for i in self.modcols])
@@ -555,19 +557,23 @@ class LearnNet2(nn.Module):
                     self.emb_lpart.embedding_dim + self.emb_ltag.embedding_dim
         IN_UNITSQA = \
                 self.emb_cont_user_answer.embedding_dim + \
-                len(self.contcols) # #self.emb_lag_time.embedding_dim + self.emb_elapsed_time.embedding_dim + \
+                len(self.contcols) + self.emb_lag_time.embedding_dim + self.emb_elapsed_time.embedding_dim 
         LSTM_UNITS = hidden
         
         self.seqnet1 = nn.LSTM(IN_UNITSQ, LSTM_UNITS, bidirectional=False, batch_first=True)
         self.seqnet2 = nn.LSTM(IN_UNITSQA + LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
-        self.seqnet3 = nn.LSTM(IN_UNITSQA + IN_UNITSQ + LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
+        #self.seqnet3 = nn.LSTM(IN_UNITSQA + IN_UNITSQ + LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
             
-        self.linear1 = nn.Linear(LSTM_UNITS * 2, LSTM_UNITS//2)
+        self.linear1 = nn.Linear(LSTM_UNITS , LSTM_UNITS//2)
+        self.linear1seq = nn.Linear(LSTM_UNITS , LSTM_UNITS//2)
         self.bn0 = nn.BatchNorm1d(num_features=len(self.contcols))
-        self.bn1 = nn.BatchNorm1d(num_features=LSTM_UNITS*2)
+        self.bn1 = nn.BatchNorm1d(num_features=LSTM_UNITS)
         self.bn2 = nn.BatchNorm1d(num_features=LSTM_UNITS//2)
+        self.bn1seq = nn.BatchNorm1d(num_features=LSTM_UNITS)
+        self.bn2seq = nn.BatchNorm1d(num_features=LSTM_UNITS//2)
         
         self.linear_out = nn.Linear(LSTM_UNITS//2, 1)
+        self.linear_outseq = nn.Linear(LSTM_UNITS//2, 1)
         
     def forward(self, x, m = None):
         
@@ -593,8 +599,8 @@ class LearnNet2(nn.Module):
             #self.emb_lpart(  x[:,:, self.modcols.index('lecture_part')].long()  ), 
             #self.emb_ltag(  x[:,:, self.modcols.index('lecture_tag')].long()  ) , 
             #(self.emb_tag(x[:,:, self.tag_idx].long()) * self.tag_wts).sum(2),
-            #self.emb_lag_time(   x[:,:, self.modcols.index('lag_time_cat')].long()   ), 
-            #self.emb_elapsed_time(  x[:,:, self.modcols.index('elapsed_time_cat')].long()  )
+            self.emb_lag_time(   x[:,:, self.modcols.index('lag_time_cat')].long()   ), 
+            self.emb_elapsed_time(  x[:,:, self.modcols.index('elapsed_time_cat')].long()  )
             ] #+ [self.emb_tag(x[:,:, ii.item()].long()) for ii in torch.where(self.tag_idx)[0]]
             , 2)
         embcatq = self.embedding_dropout(embcatq)
@@ -609,18 +615,24 @@ class LearnNet2(nn.Module):
         hiddenq, _ = self.seqnet1(embcatq)
         xinpqa = torch.cat([embcatqa, contmat, hiddenq], 2)
         hiddenqa, _ = self.seqnet2(xinpqa)
-        xinpqa2 = torch.cat([embcatqa, embcatq, contmat, hiddenqa, ], 2)
-        hiddenqa2, _ = self.seqnet3(xinpqa2)
+        #xinpqa2 = torch.cat([embcatqa, embcatq, contmat, hiddenqa, ], 2)
+        #hiddenqa2, _ = self.seqnet3(xinpqa2)
         
-        hidden = torch.cat([hiddenqa[:,-1,:], hiddenqa2[:,-1,:]], 1)
+        #hidden = torch.cat([hiddenqa[:,-1,:], hiddenqa2[:,-1,:]], 1)
+        
+        # Take sequence of all hidden units
+        hiddenseq = self.dropout( self.bn1seq(hiddenqa.permute(0,2,1))).permute(0,2,1)
+        hiddenseq  = F.relu(self.linear1seq(hiddenseq))
+        hiddenseq = self.dropout(self.bn2seq(hiddenseq))
+        outseq = self.linear_outseq(hiddenseq).squeeze(-1)
         
         # Take last hidden unit
-        hidden = self.dropout( self.bn1( hidden) )
+        hidden = self.dropout( self.bn1(hiddenqa[:,-1,:]) )
         hidden  = F.relu(self.linear1(hidden))
         hidden = self.dropout(self.bn2(hidden))
         out = self.linear_out(hidden).flatten()
         
-        return out
+        return out, outseq
 
 logger.info('Create model and loaders')
 pdicts['maargs'] = maargs = {'modcols':pdicts['MODCOLS'], 
@@ -644,7 +656,7 @@ valdataset = SAKTDataset(valid, train, **daargs)
 loaderargs = {'num_workers' : args.workers, 'batch_size' : args.batchsize}
 trnloader = DataLoader(trndataset, shuffle=True, **loaderargs)
 valloader = DataLoader(valdataset, shuffle=False, **loaderargs)
-x, m, y = next(iter(trnloader))
+x, m, y, yseq = next(iter(trnloader))
 
 # Prep class for inference
 if args.dumpdata:
@@ -658,6 +670,7 @@ if args.dumpdata:
     gc.collect()
 
 criterion =  nn.BCEWithLogitsLoss()
+criterionseq =  nn.BCEWithLogitsLoss(reduce = False)
 
 param_optimizer = list(model.named_parameters())
 no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
@@ -684,12 +697,14 @@ for epoch in range(args.epochs):
     for step, batch in pbartrn:
 
         optimizer.zero_grad()
-        x, m, y = batch
+        x, m, y, yseq = batch
         x = x.to(device, dtype=torch.float)
         m = m.to(device, dtype=torch.long)
         y = y.to(device, dtype=torch.float)
+        yseq = yseq.to(device, dtype=torch.float)
         x = torch.autograd.Variable(x, requires_grad=True)
         y = torch.autograd.Variable(y)
+        yseq = torch.autograd.Variable(yseq)
         
         '''
         out = model(x, m)
@@ -699,8 +714,10 @@ for epoch in range(args.epochs):
         '''
         
         with autocast():
-            output = model(x, m)
-            loss = criterion(output, y)
+            out, outseq = model(x, m)
+            loss1 = criterion(out, y)
+            loss2 = (criterionseq(outseq, yseq) * m).sum() / m.sum()
+            loss = loss1 * 0.75 + loss2 * 0.25 
             loss = loss / args.accum
 
         # Accumulates scaled gradients.
