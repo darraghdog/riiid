@@ -191,8 +191,8 @@ FILTCOLS = ['row_id', 'user_id', 'content_id', 'content_type_id',  \
                        'timestamp', 'user_answer']
 logger.info(f'Loaded columns {", ".join(FILTCOLS)}')
 
-valid = pd.read_feather(f'data/{DIR}/cv{CUT+1}_valid.feather')[FILTCOLS].head(10000)
-train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS].tail(10**6)
+valid = pd.read_feather(f'data/{DIR}/cv{CUT+1}_valid.feather')[FILTCOLS]#.head(10000)
+train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS]#.tail(10**6)
 
 train = train.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
 valid = valid.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
