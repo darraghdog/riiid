@@ -501,7 +501,7 @@ class SAKTDataset(Dataset):
         
         if self.has_target:
             target = umat[-1, self.yidx ]
-            targetseq = np.concatenate((np.ones(1) * 2, umat[:-1, self.yidx]), 0)
+            targetseq = np.concatenate((np.ones(1) * 2, umat[:-1, self.yidx]), 0).clip(0,1)
             umat[:, self.targetidx] = np.concatenate((self.padtarget, \
                                                       umat[:-1, self.targetidx]), 0)
         if target > 1:
