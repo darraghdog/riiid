@@ -614,13 +614,6 @@ class LearnNet2(nn.Module):
         
         # Weighted sum of tags - hopefully good weights are learnt
         hiddenq, _ = self.seqnet1(embcatq)
-        
-        # Take sequence of all hidden units
-        hiddenseq = self.dropout( self.bn1seq(hiddenqa.permute(0,2,1))).permute(0,2,1)
-        hiddenseq  = F.relu(self.linear1seq(hiddenseq))
-        hiddenseq = self.dropout(self.bn2seq(hiddenseq))
-        outseq = self.linear_outseq(hiddenseq).squeeze(-1)
-        
         xinpqa = torch.cat([embcatqa, contmat, hiddenq], 2)
         hiddenqa, _ = self.seqnet2(xinpqa)
         #xinpqa2 = torch.cat([embcatqa, embcatq, contmat, hiddenqa, ], 2)
@@ -628,6 +621,11 @@ class LearnNet2(nn.Module):
         
         #hidden = torch.cat([hiddenqa[:,-1,:], hiddenqa2[:,-1,:]], 1)
         
+        # Take sequence of all hidden units
+        hiddenseq = self.dropout( self.bn1seq(hiddenqa.permute(0,2,1))).permute(0,2,1)
+        hiddenseq  = F.relu(self.linear1seq(hiddenseq))
+        hiddenseq = self.dropout(self.bn2seq(hiddenseq))
+        outseq = self.linear_outseq(hiddenseq).squeeze(-1)
         
         # Take last hidden unit
         hidden = self.dropout( self.bn1(hiddenqa[:,-1,:]) )
