@@ -533,18 +533,19 @@ class LearnNet2(nn.Module):
         self.embcols = ['content_id', 'part']
         self.model_type = model_type
         
-        self.emb_content_id = nn.Embedding(13526, 32)
-        self.emb_bundle_id = nn.Embedding(13526, 32)
+        self.emb_content_id = nn.Embedding(13526, 32//2)
+        self.emb_bundle_id = nn.Embedding(13526, 32//2)
         self.emb_part = nn.Embedding(9, 4)
-        self.emb_tag= nn.Embedding(190, 16)
+        self.emb_tag= nn.Embedding(190, 16//2)
         self.emb_lpart = nn.Embedding(9, 4)
-        self.emb_ltag= nn.Embedding(190, 16)
-        self.emb_lag_time = nn.Embedding(301, 16)
-        self.emb_elapsed_time = nn.Embedding(301, 16)
-        self.emb_cont_user_answer = nn.Embedding(13526 * 4, 16)
+        self.emb_ltag= nn.Embedding(190, 16//2)
+        self.emb_lag_time = nn.Embedding(301, 16//2)
+        self.emb_elapsed_time = nn.Embedding(301, 16//2)
+        self.emb_cont_correct = nn.Embedding(13526 * 2, 16//2)
+        self.emb_cont_user_answer = nn.Embedding(13526 * 4, 16//2)
             
         self.tag_idx = torch.tensor(['tag' in i for i in self.modcols])
-        self.tag_wts = torch.ones((sum(self.tag_idx), 16))  / sum(self.tag_idx)
+        self.tag_wts = torch.ones((sum(self.tag_idx), self.emb_tag.embedding_dim))  / sum(self.tag_idx)
         self.tag_wts = nn.Parameter(self.tag_wts)
         self.tag_wts.requires_grad = True
         self.cont_wts = nn.Parameter( torch.ones(len(self.contcols)) )
@@ -560,7 +561,8 @@ class LearnNet2(nn.Module):
                     self.emb_lpart.embedding_dim + self.emb_ltag.embedding_dim + len(self.contcols)
         IN_UNITSQA = \
                 self.emb_cont_user_answer.embedding_dim + \
-                len(self.contcols) + self.emb_lag_time.embedding_dim + self.emb_elapsed_time.embedding_dim 
+                len(self.contcols) + self.emb_lag_time.embedding_dim + self.emb_elapsed_time.embedding_dim + \
+                    self.emb_cont_correct .embedding_dim
         LSTM_UNITS = hidden
         
         self.seqnet1 = nn.LSTM(IN_UNITSQ, LSTM_UNITS, bidirectional=False, batch_first=True)
@@ -598,6 +600,8 @@ class LearnNet2(nn.Module):
             #self.emb_content_id(  x[:,:, self.modcols.index('content_id')].long()  ),
             #self.emb_bundle_id(  x[:,:, self.modcols.index('bundle_id')].long()  ),
             self.emb_cont_user_answer(  x[:,:, self.modcols.index('content_user_answer')].long()  ),
+            self.emb_cont_correct(  x[:,:, self.modcols.index('content_id')].long() * 2 + \
+                                      x[:,:, self.modcols.index('answered_correctly')].long()),
             #self.emb_part(  x[:,:, self.modcols.index('part')].long()  ), 
             #self.emb_lpart(  x[:,:, self.modcols.index('lecture_part')].long()  ), 
             #self.emb_ltag(  x[:,:, self.modcols.index('lecture_tag')].long()  ) , 
