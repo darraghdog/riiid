@@ -515,7 +515,7 @@ class SAKTDataset(Dataset):
         return umat, umask, target
 
 # dseq = trndataset.quidxbackup
-def randShuffleSort(dseq, clip = 0.01):
+def randShuffleSort(dseq, clip = 0.01 ):
     quidxdf = pd.DataFrame(dseq.copy(), columns = ['user', 'index'])
     # Randomise starting positions
     quidxdf['startidx'] = quidxdf.groupby('user').cumcount()
@@ -542,8 +542,9 @@ def randShuffleSort(dseq, clip = 0.01):
     clipct = int(clip*len(quidxdf))
     quidxmat = quidxdf.iloc[ clipct : -clipct ][['user', 'index']].values
     # Deck of card shuffle
-    cut = np.random.randint(0, len( quidxmat))
-    quidxmat = np.concatenate((quidxmat[cut:],quidxmat[:cut]))
+    quidxmat  = np.array_split(quidxmat , 10)
+    random.shuffle(quidxmat )
+    quidxmat = np.concatenate(quidxmat)
     
     return quidxmat
 
