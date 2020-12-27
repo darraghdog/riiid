@@ -513,9 +513,9 @@ class SAKTDataset(Dataset):
         umask[-useqlen:] = 1
         
         return umat, umask, target
-
+    
 def randShuffleSort(dseq):
-    quidxdf = pd.DataFrame(dseq, columns = ['user', 'index'])
+    quidxdf = pd.DataFrame(dseq.copy(), columns = ['user', 'index'])
     # Randomise starting positions
     quidxdf['startidx'] = quidxdf.groupby('user').cumcount()
     quidxdf['userct'] = quidxdf.groupby('user')['index'].transform('count').values
@@ -523,6 +523,11 @@ def randShuffleSort(dseq):
                 .apply(lambda x: random.randint(0, len(x)-1) ).loc[quidxdf.user].values
     ix = quidxdf['startidx'] <  quidxdf['random_start']
     quidxdf['startidx'][ix] = quidxdf['startidx'][ix] + quidxdf['userct'][ix]
+    
+    # Even out batches
+    quidxdf = quidxdf.sort_values(['user', 'startidx'])
+    quidxdf['startidx'] = quidxdf.groupby('user').cumcount().values / quidxdf.userct.values
+    
     # Randomise users
     udf = pd.DataFrame(quidxdf.user.unique(), columns = ['user_id'])
     udf['rand'] = np.random.permutation(( np.arange(len(udf))))
@@ -532,7 +537,8 @@ def randShuffleSort(dseq):
     # back to a sequence
     quidxmat = quidxdf[['user', 'index']].values
     return quidxmat
-    
+
+
 
 class LearnNet(nn.Module):
     def __init__(self, modcols, contcols, padvals, extracols, 
