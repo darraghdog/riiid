@@ -461,6 +461,9 @@ class SAKTDataset(Dataset):
             # Pull out the sequence of questions up to that question
             container_buffer = 6
             useqidx = useqidx[:cappos][-self.maxseq-container_buffer:]
+            # Randomise task container id sequence
+            tstmp = self.dfmat[useqidx,self.cols.index('timestamp')].copy()
+            useqidx = np.array(useqidx)[tstmp.argsort()]
             # Pull out the sequence for the user
             umat = self.dfmat[useqidx].astype(np.float32)
             
@@ -476,11 +479,6 @@ class SAKTDataset(Dataset):
                 umat[-1, self.carryfwdidx] = ffwdvals
             # Now limit to maxseq
             umat = umat[-self.maxseq:]
-            
-            # Randomise task container id sequence
-            tkid = umat[:,self.cols.index('task_container_id')].copy()
-            tkid += np.random.uniform(0, 0.1, size=tkid.shape)
-            umat = umat[np.argsort(tkid)]
             
         useqlen = umat.shape[0]
         if useqlen < self.maxseq:
