@@ -513,20 +513,24 @@ class SAKTDataset(Dataset):
         umask[-useqlen:] = 1
         
         return umat, umask, target
-    
-def randShuffleSort(dseq):
+
+# dseq = trndataset.quidxbackup
+def randShuffleSort(dseq, clip = 0.005):
     quidxdf = pd.DataFrame(dseq.copy(), columns = ['user', 'index'])
     # Randomise starting positions
     quidxdf['startidx'] = quidxdf.groupby('user').cumcount()
     quidxdf['userct'] = quidxdf.groupby('user')['index'].transform('count').values
     quidxdf['random_start'] = quidxdf.groupby('user')\
-                .apply(lambda x: random.randint(0, len(x)-1) ).loc[quidxdf.user].values
+                .apply(lambda x: random.randint(0, len(x)) ).loc[quidxdf.user].values
     ix = quidxdf['startidx'] <  quidxdf['random_start']
     quidxdf['startidx'][ix] = quidxdf['startidx'][ix] + quidxdf['userct'][ix]
     
     # Even out batches
     quidxdf = quidxdf.sort_values(['user', 'startidx'])
-    quidxdf['startidx'] = quidxdf.groupby('user').cumcount().values / quidxdf.userct.values
+    # quidxdf['userctrand'] = quidxdf.groupby('user')['index'].transform('count').values
+    quidxdf['startidx'] = ((quidxdf.groupby('user').cumcount().values) \
+                           / quidxdf.userct.values) + \
+                            (1/quidxdf.userct).apply(lambda v: random.uniform(-v/2, v/2)).values
     
     # Randomise users
     udf = pd.DataFrame(quidxdf.user.unique(), columns = ['user_id'])
@@ -535,10 +539,13 @@ def randShuffleSort(dseq):
     # Now sort on sequence
     quidxdf = quidxdf.sort_values(['startidx', 'random_user'])
     # back to a sequence
-    quidxmat = quidxdf[['user', 'index']].values
+    clipct = int(clip*len(quidxdf))
+    quidxmat = quidxdf.iloc[ clipct : -clipct ][['user', 'index']].values
+    # Deck of card shuffle
+    cut = np.random.randint(0, len( quidxmat))
+    quidxmat = np.concatenate((quidxmat[cut:],quidxmat[:cut]))
+    
     return quidxmat
-
-
 
 class LearnNet(nn.Module):
     def __init__(self, modcols, contcols, padvals, extracols, 
@@ -778,11 +785,10 @@ trnloader = DataLoader(trndataset, shuffle=False, **loaderargs)
 valloader = DataLoader(valdataset, shuffle=False, **loaderargs)
 x, m, y = next(iter(trnloader))
 
-'''
-mls = []
-for m in np.split(trndataset.quidx[:(len(trndataset.quidx) // 2056)*2056,0], len(trndataset.quidx) // 2056 ):
-    mls.append(len(np.unique(m, return_counts=True)[0]))
-'''
+#mls = [ len(np.unique(m, return_counts=True)[0]) for m in \
+#       np.split(trndataset.quidx[:(len(trndataset.quidx) // 2056)*2056,0], len(trndataset.quidx) // 2056 )]
+#pd.Series(mls).plot()
+
 
 # Prep class for inference
 if args.dumpdata:
