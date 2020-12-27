@@ -515,7 +515,7 @@ class SAKTDataset(Dataset):
         return umat, umask, target
 
 # dseq = trndataset.quidxbackup
-def randShuffleSort(dseq, clip = 0.02):
+def randShuffleSort(dseq, clip = 0.01):
     quidxdf = pd.DataFrame(dseq.copy(), columns = ['user', 'index'])
     # Randomise starting positions
     quidxdf['startidx'] = quidxdf.groupby('user').cumcount()
