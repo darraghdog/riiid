@@ -178,7 +178,7 @@ logger.info(args)
 device = 'cpu' if platform.system() == 'Darwin' else 'cuda'
 CUT=0
 DIR=args.dir#'val'
-VERSION='V21'#args.version
+VERSION='V20'#args.version
 debug = False
 validaten_flg = False
 
@@ -394,12 +394,62 @@ if args.dumpdata:
 #logger.info(f'Na vals valid \n\n{valid.isna().sum()}')
 #logger.info(f'Max vals train \n\n{train.max()}')
 #logger.info(f'Max vals valid \n\n{valid.max()}')
+    
+class Attention(nn.Module):
+    def __init__(self, hidden_size, batch_first=False):
+        super(Attention, self).__init__()
 
-# wts = 1/(np.log(train.groupby('user_id')['row_id'].count() + 2))
+        self.hidden_size = hidden_size
+        self.batch_first = batch_first
+
+        self.att_weights = nn.Parameter(torch.Tensor(1, hidden_size), requires_grad=True)
+
+        stdv = 1.0 / np.sqrt(self.hidden_size)
+        for weight in self.att_weights:
+            nn.init.uniform_(weight, -stdv, stdv)
+
+    def get_mask(self):
+        pass
+
+    def forward(self, inputs, lengths):
+        if self.batch_first:
+            batch_size, max_len = inputs.size()[:2]
+        else:
+            max_len, batch_size = inputs.size()[:2]
+            
+        # apply attention layer
+        weights = torch.bmm(inputs,
+                            self.att_weights  # (1, hidden_size)
+                            .permute(1, 0)  # (hidden_size, 1)
+                            .unsqueeze(0)  # (1, hidden_size, 1)
+                            .repeat(batch_size, 1, 1) # (batch_size, hidden_size, 1)
+                            )
+    
+        attentions = torch.softmax(F.relu(weights.squeeze()), dim=-1)
+
+        # create mask based on the sentence lengths
+        mask = torch.ones(attentions.size(), requires_grad=True).to(device)
+        for i, l in enumerate(lengths):  # skip the first sentence
+            if l < max_len:
+                mask[i, l:] = 0
+
+        # apply mask and renormalize attention scores (weights)
+        masked = attentions * mask
+        _sums = masked.sum(-1).unsqueeze(-1)  # sums per row
+        
+        attentions = masked.div(_sums)
+
+        # apply attention weights
+        weighted = torch.mul(inputs, attentions.unsqueeze(-1).expand_as(inputs))
+
+        # get the final fixed vector representations of the sentences
+        representations = weighted.sum(1).squeeze()
+
+        return representations, attentions
 
 class SAKTDataset(Dataset):
     def __init__(self, data, basedf, cols, padvals, extracols, carryfwdcols, 
-                 maxseq = args.maxseq, has_target = True, submit = False, mode='valid'): 
+                 maxseq = args.maxseq, has_target = True, submit = False): 
         super(SAKTDataset, self).__init__()
         
         self.cols = cols
@@ -427,7 +477,6 @@ class SAKTDataset(Dataset):
         self.data[['timestamp','prior_question_elapsed_time']] = \
             self.data[['timestamp','prior_question_elapsed_time']] / 1000
         self.dfmat = self.data[self.cols].values.astype(np.float32)
-        self.wts = 1/(np.log(self.data.groupby('user_id')['row_id'].count() + 2)).astype(np.float32)
         
         self.users = self.data.user_id.unique() 
         del self.data
@@ -445,8 +494,7 @@ class SAKTDataset(Dataset):
                               (660, 1440, 28), (1960, 10800, 36), (10800, 259200, 60), 
                               (518400, 2592000, 10), (2592000, 31104000, 22), (31104000, 311040000, 10)]])
         self.submit = False
-        self.mode = mode
-        
+    
     def __len__(self):
         
         return len(self.quidx)
@@ -475,9 +523,6 @@ class SAKTDataset(Dataset):
             u,q = self.quidx[idx]
             # Pull out ths user index sequence
             useqidx = self.uidx[u]
-            # Get weight
-            if self.mode == 'train':
-                wt = self.wts.loc[u]
             # Pull out position of question
             cappos  = useqidx.index(q) + 1
             # Pull out the sequence of questions up to that question
@@ -538,8 +583,6 @@ class SAKTDataset(Dataset):
         umask = torch.zeros(umat.shape[0], dtype=torch.int8)
         umask[-useqlen:] = 1
         
-        if self.mode == 'train':
-            return umat, umask, target, wt
         return umat, umask, target
 
 # dseq = trndataset.quidxbackup
@@ -626,9 +669,10 @@ class LearnNet2(nn.Module):
         LSTM_UNITS = hidden
         self.diffsize = self.emb_content_id.embedding_dim + self.emb_part.embedding_dim 
         
-        self.seqnet1 = nn.LSTM(IN_UNITSQ, LSTM_UNITS//2, bidirectional=True, batch_first=True)
+        self.seqnet1 = nn.LSTM(IN_UNITSQ, LSTM_UNITS, bidirectional=False, batch_first=True, num_layers=2)
         self.seqnet2 = nn.LSTM(IN_UNITSQA + LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
-            
+        # self.atten1 = Attention(LSTM_UNITS, batch_first=True) # 2 is bidrectional
+        
         self.linear1 = nn.Linear(LSTM_UNITS, LSTM_UNITS//2)
         self.bn0 = nn.BatchNorm1d(num_features=len(self.contcols))
         self.bn1 = nn.BatchNorm1d(num_features=LSTM_UNITS)
@@ -679,7 +723,8 @@ class LearnNet2(nn.Module):
         
         # Weighted sum of tags - hopefully good weights are learnt
         xinpq = torch.cat([embcatq, embcatqdiff], 2)
-        hiddenq, _ = self.seqnet1(xinpq)
+        hiddenq, lengths = self.seqnet1(xinpq)
+        # hiddenq1, _ = self.atten1(hiddenq, m.sum(1))
         xinpqa = torch.cat([embcatqa, contmat, hiddenq], 2)
         hiddenqa, _ = self.seqnet2(xinpqa)
         
@@ -709,14 +754,13 @@ pdicts['daargs'] = daargs = {'cols':pdicts['MODCOLS'],
           'carryfwdcols': pdicts['CARRYTASKFWD'],
           'extracols':pdicts['EXTRACOLS'], 
           'maxseq': args.maxseq}
-trndataset = SAKTDataset(train, None, mode='train', **daargs)
+trndataset = SAKTDataset(train, None, **daargs)
 valdataset = SAKTDataset(valid, train, **daargs)
 loaderargs = {'num_workers' : args.workers, 'batch_size' : args.batchsize}
 trndataset.quidx = randShuffleSort(trndataset.quidxbackup)
 trnloader = DataLoader(trndataset, shuffle=False, **loaderargs)
 valloader = DataLoader(valdataset, shuffle=False, **loaderargs)
-x, m, y, wt = next(iter(trnloader))
-xv, mv, yv = next(iter(valloader))
+x, m, y = next(iter(trnloader))
 
 #mls = [ len(np.unique(m, return_counts=True)[0]) for m in \
 #       np.split(trndataset.quidx[:(len(trndataset.quidx) // 2056)*2056,0], len(trndataset.quidx) // 2056 )]
@@ -734,7 +778,6 @@ if args.dumpdata:
     del df, alldataset 
     gc.collect()
 
-criterion =  nn.BCEWithLogitsLoss(reduce = False)
 criterion =  nn.BCEWithLogitsLoss()
 
 param_optimizer = list(model.named_parameters())
@@ -744,7 +787,7 @@ optimizer = torch.optim.Adam(plist, lr=args.lr)
 
 if device != 'cpu':
     scaler = torch.cuda.amp.GradScaler()
-    
+
 logger.info('Start training')
 best_val_loss = 100.
 trn_lossls = []
@@ -762,20 +805,18 @@ for epoch in range(args.epochs):
     # Sort forward
     trndataset.quidx = randShuffleSort(trndataset.quidxbackup)
     trnloader = DataLoader(trndataset, shuffle=False, **loaderargs)
-
+    
     for step, batch in pbartrn:
-        
+
         optimizer.zero_grad()
-        x, m, y, w = batch
+        x, m, y = batch
         x = x.to(device, dtype=torch.float)
-        w = w.to(device, dtype=torch.float)
         m = m.to(device, dtype=torch.long)
         y = y.to(device, dtype=torch.float)
         x = torch.autograd.Variable(x, requires_grad=True)
         y = torch.autograd.Variable(y)
         
         out = model(x, m)
-        # loss = (criterion(out, y) * w).mean()
         loss = criterion(out, y)
         loss.backward()
         optimizer.step()
