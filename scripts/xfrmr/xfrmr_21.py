@@ -626,12 +626,12 @@ class LearnNet2(nn.Module):
         LSTM_UNITS = hidden
         self.diffsize = self.emb_content_id.embedding_dim + self.emb_part.embedding_dim 
         
-        self.seqnet1 = nn.LSTM(IN_UNITSQ, LSTM_UNITS, bidirectional=False, batch_first=True)
-        self.seqnet2 = nn.LSTM(IN_UNITSQA + LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
+        self.seqnet1 = nn.LSTM(IN_UNITSQ, LSTM_UNITS, bidirectional=True, batch_first=True)
+        self.seqnet2 = nn.LSTM(IN_UNITSQA + LSTM_UNITS * 2, LSTM_UNITS *2, bidirectional=False, batch_first=True)
             
-        self.linear1 = nn.Linear(LSTM_UNITS, LSTM_UNITS//2)
+        self.linear1 = nn.Linear(LSTM_UNITS * 2, LSTM_UNITS//2)
         self.bn0 = nn.BatchNorm1d(num_features=len(self.contcols))
-        self.bn1 = nn.BatchNorm1d(num_features=LSTM_UNITS)
+        self.bn1 = nn.BatchNorm1d(num_features=LSTM_UNITS*2)
         self.bn2 = nn.BatchNorm1d(num_features=LSTM_UNITS//2)
         
         self.linear_out = nn.Linear(LSTM_UNITS//2, 1)
@@ -735,6 +735,7 @@ if args.dumpdata:
     gc.collect()
 
 criterion =  nn.BCEWithLogitsLoss(reduce = False)
+criterion =  nn.BCEWithLogitsLoss()
 
 param_optimizer = list(model.named_parameters())
 no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
@@ -743,7 +744,7 @@ optimizer = torch.optim.Adam(plist, lr=args.lr)
 
 if device != 'cpu':
     scaler = torch.cuda.amp.GradScaler()
-
+    
 logger.info('Start training')
 best_val_loss = 100.
 trn_lossls = []
@@ -774,7 +775,8 @@ for epoch in range(args.epochs):
         y = torch.autograd.Variable(y)
         
         out = model(x, m)
-        loss = (criterion(out, y) * w).mean()
+        # loss = (criterion(out, y) * w).mean()
+        loss = criterion(out, y)
         loss.backward()
         optimizer.step()
         '''
