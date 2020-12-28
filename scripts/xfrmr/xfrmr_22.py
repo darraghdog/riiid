@@ -178,7 +178,7 @@ logger.info(args)
 device = 'cpu' if platform.system() == 'Darwin' else 'cuda'
 CUT=0
 DIR=args.dir#'val'
-VERSION='V21'#args.version
+VERSION='V22'#args.version
 debug = False
 validaten_flg = False
 
@@ -394,65 +394,6 @@ if args.dumpdata:
 #logger.info(f'Na vals valid \n\n{valid.isna().sum()}')
 #logger.info(f'Max vals train \n\n{train.max()}')
 #logger.info(f'Max vals valid \n\n{valid.max()}')
-    
-    
-# inputs, lengths = hiddenq, m.sum(1)
-class Attention(nn.Module):
-    def __init__(self, hidden_size, batch_first=False):
-        super(Attention, self).__init__()
-
-        self.hidden_size = hidden_size
-        self.batch_first = batch_first
-        
-        weights = torch.zeros(1, hidden_size)
-        weights[:, -1] = 1.
-        self.att_weights = nn.Parameter(weights, requires_grad=True)
-
-        stdv = 1.0 / np.sqrt(self.hidden_size)
-        for weight in self.att_weights:
-            nn.init.uniform_(weight, -stdv, stdv)
-
-    def get_mask(self):
-        pass
-
-    def forward(self, inputs, mask):
-        if self.batch_first:
-            batch_size, max_len = inputs.size()[:2]
-        else:
-            max_len, batch_size = inputs.size()[:2]
-            
-        # apply attention layer
-        weights = torch.bmm(inputs,
-                            self.att_weights  # (1, hidden_size)
-                            .permute(1, 0)  # (hidden_size, 1)
-                            .unsqueeze(0)  # (1, hidden_size, 1)
-                            .repeat(batch_size, 1, 1) # (batch_size, hidden_size, 1)
-                            )
-    
-        attentions = torch.softmax(F.relu(weights.squeeze()), dim=-1)
-
-        # create mask based on the sentence lengths
-        '''
-        mask = torch.ones(attentions.size(), requires_grad=True).to(device)
-        for i, l in enumerate(lengths):  # skip the first sentence
-            if l < max_len:
-                mask[i, :l] = 0
-        '''
-        mask = torch.tensor(m.float(), requires_grad=True).to(device)
-
-        # apply mask and renormalize attention scores (weights)
-        masked = attentions * mask
-        _sums = masked.sum(-1).unsqueeze(-1)  # sums per row
-        
-        attentions = masked.div(_sums)
-
-        # apply attention weights
-        weighted = torch.mul(inputs, attentions.unsqueeze(-1).expand_as(inputs))
-
-        # get the final fixed vector representations of the sentences
-        representations = weighted.sum(1).squeeze()
-
-        return representations, attentions
 
 class SAKTDataset(Dataset):
     def __init__(self, data, basedf, cols, padvals, extracols, carryfwdcols, 
@@ -556,16 +497,26 @@ class SAKTDataset(Dataset):
                 umat[-1, self.carryfwdidx] = ffwdvals
             # Now limit to maxseq
             umat = umat[-self.maxseq:]
+            # Limit to the part
+            partidx = umat[:, self.cols.index('part')] == umat[-1, self.cols.index('part')]
+            umatp = umat[partidx]
         
         useqlen = umat.shape[0]
         if useqlen < self.maxseq:
             padlen = self.maxseq - umat.shape[0] 
             upadmat = np.tile(self.padmat, (padlen, 1))
             umat = np.concatenate((upadmat, umat), 0)
+        useqlenp = umatp.shape[0]
+        if useqlenp < self.maxseq:
+            padlenp = self.maxseq - umatp.shape[0] 
+            upadmatp = np.tile(self.padmat, (padlenp, 1))
+            umatp = np.concatenate((upadmatp, umatp), 0)
             
         # convert time to lag
         umat[:, self.timecols[0]][1:] = umat[:, self.timecols[0]][1:] - umat[:, self.timecols[0]][:-1]
         umat[:, self.timecols[0]][0] = 0
+        umatp[:, self.timecols[0]][1:] = umatp[:, self.timecols[0]][1:] - umatp[:, self.timecols[0]][:-1]
+        umatp[:, self.timecols[0]][0] = 0
         
         # Time embeddings
         timeemb =   np.stack(( \
@@ -573,24 +524,33 @@ class SAKTDataset(Dataset):
                     (umat[:, self.timecols[1]]).clip(0, 300))).round()
         timeemb = np.transpose(timeemb, (1,0))
         umat = np.concatenate((umat, timeemb), 1)
+        timeemb =   np.stack(( \
+                    np.digitize(umatp[:, self.timecols[0]], self.lagbins), 
+                    (umatp[:, self.timecols[1]]).clip(0, 300))).round()
+        timeemb = np.transpose(timeemb, (1,0))
+        umatp = np.concatenate((umatp, timeemb), 1)
         
         # preprocess continuous time - try log scale and roughly center it
         umat[:, self.timecols] = np.log10( 1.+ umat[:, self.timecols] / 60  ) 
+        umatp[:, self.timecols] = np.log10( 1.+ umatp[:, self.timecols] / 60  ) 
         
         if self.has_target:
             target = umat[-1, self.yidx ]
-            umat[:, self.targetidx] = np.concatenate((self.padtarget, \
-                                                      umat[:-1, self.targetidx]), 0)
+            umat[:, self.targetidx] = np.concatenate((self.padtarget, umat[:-1, self.targetidx]), 0)
+            umatp[:, self.targetidx] = np.concatenate((self.padtarget, umatp[:-1, self.targetidx]), 0)
+            
         if target > 1:
             logger.info(f'{target}\t{u},{q}\t{idx}' )
         umat = torch.tensor(umat).float()
+        umatp = torch.tensor(umatp).float()
         target = torch.tensor(target)
         
         # Create mask
         umask = torch.zeros(umat.shape[0], dtype=torch.int8)
+        umaskp = torch.zeros(umatp.shape[0], dtype=torch.int8)
         umask[-useqlen:] = 1
         
-        return umat, umask, target
+        return umat, umask, umatp, umaskp, target
 
 # dseq = trndataset.quidxbackup
 def randShuffleSort(dseq, clip = 0.01 ):
@@ -626,6 +586,57 @@ def randShuffleSort(dseq, clip = 0.01 ):
     
     return quidxmat
 
+
+class Attention(nn.Module):
+    def __init__(self, hidden_size, batch_first=False):
+        super(Attention, self).__init__()
+
+        self.hidden_size = hidden_size
+        self.batch_first = batch_first
+        
+        weights = torch.zeros(1, hidden_size)
+        weights[:, -1] = 1.
+        self.att_weights = nn.Parameter(weights, requires_grad=True)
+
+        stdv = 1.0 / np.sqrt(self.hidden_size)
+        for weight in self.att_weights:
+            nn.init.uniform_(weight, -stdv, stdv)
+
+    def get_mask(self):
+        pass
+
+    def forward(self, inputs, mask):
+        if self.batch_first:
+            batch_size, max_len = inputs.size()[:2]
+        else:
+            max_len, batch_size = inputs.size()[:2]
+            
+        # apply attention layer
+        weights = torch.bmm(inputs,
+                            self.att_weights  # (1, hidden_size)
+                            .permute(1, 0)  # (hidden_size, 1)
+                            .unsqueeze(0)  # (1, hidden_size, 1)
+                            .repeat(batch_size, 1, 1) # (batch_size, hidden_size, 1)
+                            )
+    
+        attentions = torch.softmax(F.relu(weights.squeeze()), dim=-1)
+
+        # create mask based on the sentence lengths
+        mask = torch.tensor(m.float(), requires_grad=True).to(device)
+
+        # apply mask and renormalize attention scores (weights)
+        masked = attentions * mask
+        _sums = masked.sum(-1).unsqueeze(-1)  # sums per row
+        
+        attentions = masked.div(_sums)
+
+        # apply attention weights
+        weighted = torch.mul(inputs, attentions.unsqueeze(-1).expand_as(inputs))
+
+        # get the final fixed vector representations of the sentences
+        representations = weighted.sum(1).squeeze()
+
+        return representations, attentions
 
 class LearnNet2(nn.Module):
     def __init__(self, modcols, contcols, padvals, extracols, 
@@ -666,8 +677,8 @@ class LearnNet2(nn.Module):
         self.embedding_dropout = SpatialDropout(dropout)
         
         IN_UNITSQ = \
-                2 * self.emb_content_id.embedding_dim + self.emb_bundle_id.embedding_dim + \
-                2 * self.emb_part.embedding_dim + self.emb_tag.embedding_dim + \
+                self.emb_content_id.embedding_dim + self.emb_bundle_id.embedding_dim + \
+                self.emb_part.embedding_dim + self.emb_tag.embedding_dim + \
                     self.emb_lpart.embedding_dim + self.emb_ltag.embedding_dim + \
                         self.emb_prior.embedding_dim + self.emb_content_id_prior.embedding_dim
         IN_UNITSQA = self.emb_lag_time.embedding_dim + self.emb_elapsed_time.embedding_dim + \
@@ -678,16 +689,19 @@ class LearnNet2(nn.Module):
         
         self.seqnet1 = nn.LSTM(IN_UNITSQ, LSTM_UNITS, bidirectional=False, batch_first=True)
         self.seqnet2 = nn.LSTM(IN_UNITSQA + LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
+        self.seqnet1p = nn.LSTM(IN_UNITSQ, LSTM_UNITS, bidirectional=False, batch_first=True)
+        self.seqnet2p = nn.LSTM(IN_UNITSQA + LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
         self.atten2 = Attention(LSTM_UNITS, batch_first=True) # 2 is bidrectional
-        
-        self.linear1 = nn.Linear(LSTM_UNITS, LSTM_UNITS//2)
+        self.atten2p = Attention(LSTM_UNITS, batch_first=True) # 2 is bidrectional
+            
+        self.linear1 = nn.Linear(LSTM_UNITS * 2, LSTM_UNITS//2)
         self.bn0 = nn.BatchNorm1d(num_features=len(self.contcols))
-        self.bn1 = nn.BatchNorm1d(num_features=LSTM_UNITS)
+        self.bn1 = nn.BatchNorm1d(num_features=LSTM_UNITS*2)
         self.bn2 = nn.BatchNorm1d(num_features=LSTM_UNITS//2)
         
         self.linear_out = nn.Linear(LSTM_UNITS//2, 1)
         
-    def forward(self, x, m = None):
+    def embed(self, x):
         
         content_id_prior = x[:,:,self.modcols.index('content_id')] * 3 + \
                             x[:,:, self.modcols.index('prior_question_had_explanation')]
@@ -697,25 +711,15 @@ class LearnNet2(nn.Module):
             self.emb_content_id_prior(  content_id_prior.long()  ),
             self.emb_prior( x[:,:, self.modcols.index('prior_question_had_explanation')].long() ),
             self.emb_bundle_id(  x[:,:, self.modcols.index('bundle_id')].long()  ),
-            #self.emb_cont_user_answer(  x[:,:, self.modcols.index('content_user_answer')].long()  ),
             self.emb_lpart(  x[:,:, self.modcols.index('lecture_part')].long()  ), 
             self.emb_ltag(  x[:,:, self.modcols.index('lecture_tag')].long()  ) , 
             (self.emb_tag(x[:,:, self.tag_idx].long()) * self.tag_wts).sum(2),
-            #self.emb_lag_time(   x[:,:, self.modcols.index('lag_time_cat')].long()   ), 
-            #self.emb_elapsed_time(  x[:,:, self.modcols.index('elapsed_time_cat')].long()  )
             ] #+ [self.emb_tag(x[:,:, ii.item()].long()) for ii in torch.where(self.tag_idx)[0]]
             , 2)
-        embcatqdiff = embcatq[:,:,:self.diffsize] - embcatq[:,-1,:self.diffsize].unsqueeze(1)
-            
+        
         # Categroical embeddings
         embcatqa = torch.cat([
-            #self.emb_content_id(  x[:,:, self.modcols.index('content_id')].long()  ),
-            #self.emb_bundle_id(  x[:,:, self.modcols.index('bundle_id')].long()  ),
             self.emb_cont_user_answer(  x[:,:, self.modcols.index('content_user_answer')].long()  ),
-            #self.emb_part(  x[:,:, self.modcols.index('part')].long()  ), 
-            #self.emb_lpart(  x[:,:, self.modcols.index('lecture_part')].long()  ), 
-            #self.emb_ltag(  x[:,:, self.modcols.index('lecture_tag')].long()  ) , 
-            #(self.emb_tag(x[:,:, self.tag_idx].long()) * self.tag_wts).sum(2),
             self.emb_lag_time(   x[:,:, self.modcols.index('lag_time_cat')].long()   ), 
             self.emb_elapsed_time(  x[:,:, self.modcols.index('elapsed_time_cat')].long()  )
             ] #+ [self.emb_tag(x[:,:, ii.item()].long()) for ii in torch.where(self.tag_idx)[0]]
@@ -723,20 +727,37 @@ class LearnNet2(nn.Module):
         embcatq = self.embedding_dropout(embcatq)
         embcatqa = self.embedding_dropout(embcatqa)
         
+        return embcatq, embcatqa
+    
+    def contfeat(self, x):
         ## Continuous
         contmat  = x[:,:, self.cont_idx]
         contmat = self.bn0(contmat.permute(0,2,1)) .permute(0,2,1)
         contmat = contmat * self.cont_wts
+        return contmat
+        
+    def forward(self, x, xp, m = None, mp = None):
+        
+        embcatq, embcatqa = self.embed(x)
+        embcatpq, embcatpqa = self.embed(x)
+        
+        ## Continuous
+        contmat = self.contfeat(x)
+        contmatp = self.contfeat(xp)
         
         # Weighted sum of tags - hopefully good weights are learnt
-        xinpq = torch.cat([embcatq, embcatqdiff], 2)
-        hiddenq, lengths = self.seqnet1(xinpq)
+        hiddenq, _ = self.seqnet1(embcatq)
         xinpqa = torch.cat([embcatqa, contmat, hiddenq], 2)
         hiddenqa, _ = self.seqnet2(xinpqa)
         hiddenqa, _ = self.atten2(hiddenqa, m)
         
+        hiddenpq, _ = self.seqnet1p(embcatpq)
+        xinppqa = torch.cat([embcatpqa, contmatp, hiddenpq], 2)
+        hiddenpqa, _ = self.seqnet2p(xinppqa)
+        hiddenpqa, _ = self.atten2p(hiddenpqa, mp)
+        
         # Take last hidden unit
-        hidden = hiddenqa#[:,-1,:]
+        hidden = torch.cat([hiddenqa[:,-1,:], hiddenpqa[:,-1,:]], 1)
         hidden = self.dropout( self.bn1( hidden) )
         hidden  = F.relu(self.linear1(hidden))
         hidden = self.dropout(self.bn2(hidden))
@@ -767,7 +788,7 @@ loaderargs = {'num_workers' : args.workers, 'batch_size' : args.batchsize}
 trndataset.quidx = randShuffleSort(trndataset.quidxbackup)
 trnloader = DataLoader(trndataset, shuffle=False, **loaderargs)
 valloader = DataLoader(valdataset, shuffle=False, **loaderargs)
-x, m, y = next(iter(trnloader))
+x, m, xp, mp, y = next(iter(trnloader))
 
 #mls = [ len(np.unique(m, return_counts=True)[0]) for m in \
 #       np.split(trndataset.quidx[:(len(trndataset.quidx) // 2056)*2056,0], len(trndataset.quidx) // 2056 )]
@@ -816,7 +837,7 @@ for epoch in range(args.epochs):
     for step, batch in pbartrn:
 
         optimizer.zero_grad()
-        x, m, y = batch
+        x, m, xp, mp, y = batch
         x = x.to(device, dtype=torch.float)
         m = m.to(device, dtype=torch.long)
         y = y.to(device, dtype=torch.float)
