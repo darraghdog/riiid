@@ -163,7 +163,6 @@ arg('--epochs', type=int, default=12)
 arg('--maxseq', type=int, default=128)
 arg('--hidden', type=int, default=256)
 arg('--n_layers', type=int, default=2)
-arg('--accum', type=int, default=1)
 arg('--n_heads', type=int, default=8)
 arg('--dumpdata', type=bool, default=0)
 arg('--bags', type=int, default=4)
@@ -627,12 +626,12 @@ class LearnNet2(nn.Module):
         LSTM_UNITS = hidden
         self.diffsize = self.emb_content_id.embedding_dim + self.emb_part.embedding_dim 
         
-        self.seqnet1 = nn.LSTM(IN_UNITSQ, LSTM_UNITS, bidirectional=True, batch_first=True)
-        self.seqnet2 = nn.LSTM(IN_UNITSQA + LSTM_UNITS * 2, LSTM_UNITS *2, bidirectional=False, batch_first=True)
+        self.seqnet1 = nn.LSTM(IN_UNITSQ, LSTM_UNITS//2, bidirectional=True, batch_first=True)
+        self.seqnet2 = nn.LSTM(IN_UNITSQA + LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
             
-        self.linear1 = nn.Linear(LSTM_UNITS * 2, LSTM_UNITS//2)
+        self.linear1 = nn.Linear(LSTM_UNITS, LSTM_UNITS//2)
         self.bn0 = nn.BatchNorm1d(num_features=len(self.contcols))
-        self.bn1 = nn.BatchNorm1d(num_features=LSTM_UNITS*2)
+        self.bn1 = nn.BatchNorm1d(num_features=LSTM_UNITS)
         self.bn2 = nn.BatchNorm1d(num_features=LSTM_UNITS//2)
         
         self.linear_out = nn.Linear(LSTM_UNITS//2, 1)
@@ -775,21 +774,24 @@ for epoch in range(args.epochs):
         x = torch.autograd.Variable(x, requires_grad=True)
         y = torch.autograd.Variable(y)
         
+        out = model(x, m)
+        # loss = (criterion(out, y) * w).mean()
+        loss = criterion(out, y)
+        loss.backward()
+        optimizer.step()
+        '''
         with autocast():
-            output = model(x, m)
-            loss = criterion(output, y)
-            loss = loss / args.accum
-
-        # Accumulates scaled gradients.
-        scaler.scale(loss).backward()
-
-        if (step + 1) % args.accum == 0:
-            # may unscale_ here if desired (e.g., to allow clipping unscaled gradients)
+            out = model(x, m)
+            loss = criterion(out, y)
+        if device != 'cpu':
+            scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
+        else:
+            loss.backward()
+            optimizer.step()
             optimizer.zero_grad()
-            
-            
+        '''
         trn_loss += loss.item()
         trn_lossls.append(loss.item())
         trn_lossls = trn_lossls[-1000:]
