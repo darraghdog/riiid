@@ -725,7 +725,7 @@ class LearnNet2(nn.Module):
         
         ## Continuous
         contmat  = x[:,:, self.cont_idx]
-        contmat = self.bn0(contmat.permute(0,2,1)) .permute(0,2,1)
+        # contmat = self.bn0(contmat.permute(0,2,1)) .permute(0,2,1)
         contmat = contmat * self.cont_wts
         
         # Weighted sum of tags - hopefully good weights are learnt
