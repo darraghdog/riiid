@@ -757,7 +757,7 @@ class LearnNet2(nn.Module):
         hiddenpqa, _ = self.atten2p(hiddenpqa, mp)
         
         # Take last hidden unit
-        hidden = torch.cat([hiddenqa[:,-1,:], hiddenpqa[:,-1,:]], 1)
+        hidden = torch.cat([hiddenqa, hiddenpqa], 1)
         hidden = self.dropout( self.bn1( hidden) )
         hidden  = F.relu(self.linear1(hidden))
         hidden = self.dropout(self.bn2(hidden))
@@ -839,12 +839,15 @@ for epoch in range(args.epochs):
         optimizer.zero_grad()
         x, m, xp, mp, y = batch
         x = x.to(device, dtype=torch.float)
+        xp = xp.to(device, dtype=torch.float)
         m = m.to(device, dtype=torch.long)
+        mp = mp.to(device, dtype=torch.long)
         y = y.to(device, dtype=torch.float)
         x = torch.autograd.Variable(x, requires_grad=True)
+        xp = torch.autograd.Variable(xp, requires_grad=True)
         y = torch.autograd.Variable(y)
         
-        out = model(x, m)
+        out = model(x, xp, m, mp)
         loss = criterion(out, y)
         loss.backward()
         optimizer.step()
@@ -875,11 +878,13 @@ for epoch in range(args.epochs):
     model.eval()
     torch.save(model.state_dict(), f'data/{DIR}/{args.model}_{VERSION}_hidden{args.hidden}_ep{epoch}.bin')
     for step, batch in pbarval:
-        x, m, y = batch
+        x, m, xp, mp, y = batch
         x = x.to(device, dtype=torch.float)
         m = m.to(device, dtype=torch.long)
+        xp = xp.to(device, dtype=torch.float)
+        mp = mp.to(device, dtype=torch.long)
         with torch.no_grad():
-            out = model(x, m)
+            out = model(x, xp, m, mp)
         y_predls.append(out.detach().cpu().numpy())
         
     y_pred = np.concatenate(y_predls)
