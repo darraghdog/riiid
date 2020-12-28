@@ -669,7 +669,7 @@ class LearnNet2(nn.Module):
                 2 * self.emb_content_id.embedding_dim + self.emb_bundle_id.embedding_dim + \
                 2 * self.emb_part.embedding_dim + self.emb_tag.embedding_dim + \
                     self.emb_lpart.embedding_dim + self.emb_ltag.embedding_dim + \
-                        self.emb_prior.embedding_dim + self.emb_content_id_prior.embedding_dim
+                        self.emb_prior.embedding_dim # + self.emb_content_id_prior.embedding_dim
         IN_UNITSQA = self.emb_lag_time.embedding_dim + self.emb_elapsed_time.embedding_dim + \
                 self.emb_cont_user_answer.embedding_dim + \
                 len(self.contcols)
@@ -694,7 +694,7 @@ class LearnNet2(nn.Module):
         embcatq = torch.cat([
             self.emb_content_id(  x[:,:, self.modcols.index('content_id')].long()  ),
             self.emb_part(  x[:,:, self.modcols.index('part')].long()  ), 
-            #self.emb_content_id_prior(  content_id_prior.long()  ),
+            # self.emb_content_id_prior(  content_id_prior.long()  ),
             self.emb_prior( x[:,:, self.modcols.index('prior_question_had_explanation')].long() ),
             self.emb_bundle_id(  x[:,:, self.modcols.index('bundle_id')].long()  ),
             #self.emb_cont_user_answer(  x[:,:, self.modcols.index('content_user_answer')].long()  ),
@@ -716,8 +716,8 @@ class LearnNet2(nn.Module):
             #self.emb_lpart(  x[:,:, self.modcols.index('lecture_part')].long()  ), 
             #self.emb_ltag(  x[:,:, self.modcols.index('lecture_tag')].long()  ) , 
             #(self.emb_tag(x[:,:, self.tag_idx].long()) * self.tag_wts).sum(2),
-            #self.emb_lag_time(   x[:,:, self.modcols.index('lag_time_cat')].long()   ), 
-            #self.emb_elapsed_time(  x[:,:, self.modcols.index('elapsed_time_cat')].long()  )
+            self.emb_lag_time(   x[:,:, self.modcols.index('lag_time_cat')].long()   ), 
+            self.emb_elapsed_time(  x[:,:, self.modcols.index('elapsed_time_cat')].long()  )
             ] #+ [self.emb_tag(x[:,:, ii.item()].long()) for ii in torch.where(self.tag_idx)[0]]
             , 2)
         embcatq = self.embedding_dropout(embcatq)
