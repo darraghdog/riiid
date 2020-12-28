@@ -595,7 +595,6 @@ class Attention(nn.Module):
         self.batch_first = batch_first
         
         weights = torch.zeros(1, hidden_size)
-        weights[:, -1] = 1.
         self.att_weights = nn.Parameter(weights, requires_grad=True)
 
         stdv = 1.0 / np.sqrt(self.hidden_size)
@@ -833,9 +832,8 @@ for epoch in range(args.epochs):
     # Sort forward
     trndataset.quidx = randShuffleSort(trndataset.quidxbackup)
     trnloader = DataLoader(trndataset, shuffle=False, **loaderargs)
-    
-    for step, batch in pbartrn:
 
+    for step, batch in pbartrn:
         optimizer.zero_grad()
         x, m, xp, mp, y = batch
         x = x.to(device, dtype=torch.float)
