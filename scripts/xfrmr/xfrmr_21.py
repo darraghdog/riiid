@@ -163,6 +163,7 @@ arg('--epochs', type=int, default=12)
 arg('--maxseq', type=int, default=128)
 arg('--hidden', type=int, default=256)
 arg('--n_layers', type=int, default=2)
+arg('--accum', type=int, default=1)
 arg('--n_heads', type=int, default=8)
 arg('--dumpdata', type=bool, default=0)
 arg('--bags', type=int, default=4)
@@ -774,24 +775,21 @@ for epoch in range(args.epochs):
         x = torch.autograd.Variable(x, requires_grad=True)
         y = torch.autograd.Variable(y)
         
-        out = model(x, m)
-        # loss = (criterion(out, y) * w).mean()
-        loss = criterion(out, y)
-        loss.backward()
-        optimizer.step()
-        '''
         with autocast():
-            out = model(x, m)
-            loss = criterion(out, y)
-        if device != 'cpu':
-            scaler.scale(loss).backward()
+            output = model(x, m)
+            loss = criterion(output, y)
+            loss = loss / args.accum
+
+        # Accumulates scaled gradients.
+        scaler.scale(loss).backward()
+
+        if (step + 1) % args.accum == 0:
+            # may unscale_ here if desired (e.g., to allow clipping unscaled gradients)
             scaler.step(optimizer)
             scaler.update()
-        else:
-            loss.backward()
-            optimizer.step()
             optimizer.zero_grad()
-        '''
+            
+            
         trn_loss += loss.item()
         trn_lossls.append(loss.item())
         trn_lossls = trn_lossls[-1000:]
