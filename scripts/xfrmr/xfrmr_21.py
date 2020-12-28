@@ -395,14 +395,18 @@ if args.dumpdata:
 #logger.info(f'Max vals train \n\n{train.max()}')
 #logger.info(f'Max vals valid \n\n{valid.max()}')
     
+    
+# inputs, lengths = hiddenq, m.sum(1)
 class Attention(nn.Module):
     def __init__(self, hidden_size, batch_first=False):
         super(Attention, self).__init__()
 
         self.hidden_size = hidden_size
         self.batch_first = batch_first
-
-        self.att_weights = nn.Parameter(torch.Tensor(1, hidden_size), requires_grad=True)
+        
+        weights = torch.zeros(1, hidden_size)
+        weights[:, -1] = 1.
+        self.att_weights = nn.Parameter(weights, requires_grad=True)
 
         stdv = 1.0 / np.sqrt(self.hidden_size)
         for weight in self.att_weights:
@@ -411,7 +415,7 @@ class Attention(nn.Module):
     def get_mask(self):
         pass
 
-    def forward(self, inputs, lengths):
+    def forward(self, inputs, mask):
         if self.batch_first:
             batch_size, max_len = inputs.size()[:2]
         else:
@@ -428,10 +432,13 @@ class Attention(nn.Module):
         attentions = torch.softmax(F.relu(weights.squeeze()), dim=-1)
 
         # create mask based on the sentence lengths
+        '''
         mask = torch.ones(attentions.size(), requires_grad=True).to(device)
         for i, l in enumerate(lengths):  # skip the first sentence
             if l < max_len:
-                mask[i, l:] = 0
+                mask[i, :l] = 0
+        '''
+        mask = torch.tensor(m.float(), requires_grad=True).to(device)
 
         # apply mask and renormalize attention scores (weights)
         masked = attentions * mask
@@ -669,9 +676,9 @@ class LearnNet2(nn.Module):
         LSTM_UNITS = hidden
         self.diffsize = self.emb_content_id.embedding_dim + self.emb_part.embedding_dim 
         
-        self.seqnet1 = nn.LSTM(IN_UNITSQ, LSTM_UNITS, bidirectional=False, batch_first=True, num_layers=2)
-        self.seqnet2 = nn.LSTM(IN_UNITSQA + LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True, num_layers=2)
-        # self.atten1 = Attention(LSTM_UNITS, batch_first=True) # 2 is bidrectional
+        self.seqnet1 = nn.LSTM(IN_UNITSQ, LSTM_UNITS, bidirectional=False, batch_first=True)
+        self.seqnet2 = nn.LSTM(IN_UNITSQA + LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
+        self.atten2 = Attention(LSTM_UNITS, batch_first=True) # 2 is bidrectional
         
         self.linear1 = nn.Linear(LSTM_UNITS, LSTM_UNITS//2)
         self.bn0 = nn.BatchNorm1d(num_features=len(self.contcols))
@@ -724,12 +731,12 @@ class LearnNet2(nn.Module):
         # Weighted sum of tags - hopefully good weights are learnt
         xinpq = torch.cat([embcatq, embcatqdiff], 2)
         hiddenq, lengths = self.seqnet1(xinpq)
-        # hiddenq1, _ = self.atten1(hiddenq, m.sum(1))
         xinpqa = torch.cat([embcatqa, contmat, hiddenq], 2)
         hiddenqa, _ = self.seqnet2(xinpqa)
+        hiddenqa, _ = self.atten2(hiddenqa, m)
         
         # Take last hidden unit
-        hidden = hiddenqa[:,-1,:]
+        hidden = hiddenqa#[:,-1,:]
         hidden = self.dropout( self.bn1( hidden) )
         hidden  = F.relu(self.linear1(hidden))
         hidden = self.dropout(self.bn2(hidden))
