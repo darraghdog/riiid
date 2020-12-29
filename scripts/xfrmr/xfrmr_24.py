@@ -166,19 +166,21 @@ arg('--n_layers', type=int, default=2)
 arg('--n_heads', type=int, default=8)
 arg('--dumpdata', type=bool, default=0)
 arg('--bags', type=int, default=4)
+arg('--varlen', type=int, default=1)
 arg('--model', type=str, default='lstm')
 arg('--label-smoothing', type=float, default=0.01)
 arg('--dir', type=str, default='val')
 #arg('--version', type=str, default='V05')
 args = parser.parse_args()
 args.dumpdata = bool(args.dumpdata)
+args.varlen = bool(args.varlen)
 logger.info(args)
 
 
 device = 'cpu' if platform.system() == 'Darwin' else 'cuda'
 CUT=0
 DIR=args.dir#'val'
-VERSION='V21'#args.version
+VERSION='V24'#args.version
 debug = False
 validaten_flg = False
 
@@ -188,8 +190,8 @@ FILTCOLS = ['row_id', 'user_id', 'content_id', 'content_type_id',  \
                        'timestamp', 'user_answer']
 logger.info(f'Loaded columns {", ".join(FILTCOLS)}')
 
-valid = pd.read_feather(f'data/{DIR}/cv{CUT+1}_valid.feather')[FILTCOLS]
-train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS]
+valid = pd.read_feather(f'data/{DIR}/cv{CUT+1}_valid.feather')[FILTCOLS].head(10**5)
+train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS].tail(10**6)
 
 train = train.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
 valid = valid.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
@@ -438,10 +440,11 @@ class Attention(nn.Module):
             if l < max_len:
                 mask[i, :l] = 0
         '''
-        mask = torch.tensor(m.float(), requires_grad=True).to(device)
+        mask = torch.tensor(mask.float(), requires_grad=True).to(device)
 
         # apply mask and renormalize attention scores (weights)
         masked = attentions * mask
+        
         _sums = masked.sum(-1).unsqueeze(-1)  # sums per row
         
         attentions = masked.div(_sums)
@@ -773,7 +776,6 @@ x, m, y = next(iter(trnloader))
 #       np.split(trndataset.quidx[:(len(trndataset.quidx) // 2056)*2056,0], len(trndataset.quidx) // 2056 )]
 #pd.Series(mls).plot()
 
-
 # Prep class for inference
 if args.dumpdata:
     logger.info('Dump objects - tail of maxseq')
@@ -812,6 +814,7 @@ for epoch in range(args.epochs):
     # Sort forward
     trndataset.quidx = randShuffleSort(trndataset.quidxbackup)
     trnloader = DataLoader(trndataset, shuffle=False, **loaderargs)
+    seqstep = 250
     
     for step, batch in pbartrn:
 
@@ -823,7 +826,13 @@ for epoch in range(args.epochs):
         x = torch.autograd.Variable(x, requires_grad=True)
         y = torch.autograd.Variable(y)
         
-        out = model(x, m)
+        if args.varlen:
+            out = torch.zeros(len(x)).to(device, dtype=torch.float)
+            ix = m.sum(1) > seqstep
+            out[~ix] = model(x[~ix,-seqstep:], m[~ix,-seqstep:])
+            out[ix] = model(x[ix,:], m[ix,:])
+        else:
+            out = model(x, m)
         loss = criterion(out, y)
         loss.backward()
         optimizer.step()
