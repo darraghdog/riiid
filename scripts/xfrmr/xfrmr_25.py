@@ -184,8 +184,8 @@ VERSION='V25'#args.version
 debug = False
 validaten_flg = False
 
-logger.info('Cudnn version {torch.backends.cudnn.version()}')
-logger.info('Cudnn enabled {torch.backends.cudnn.enabled}')
+logger.info(f'Cudnn version {torch.backends.cudnn.version()}')
+logger.info(f'Cudnn enabled {torch.backends.cudnn.enabled}')
 
 
 FILTCOLS = ['row_id', 'user_id', 'content_id', 'content_type_id',  \
