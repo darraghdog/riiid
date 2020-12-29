@@ -814,7 +814,7 @@ for epoch in range(args.epochs):
     # Sort forward
     trndataset.quidx = randShuffleSort(trndataset.quidxbackup)
     trnloader = DataLoader(trndataset, shuffle=False, **loaderargs)
-    seqstep = 250
+    seqstep = list(range(0, args.maxseq+1, 128))
     
     for step, batch in pbartrn:
 
@@ -828,9 +828,9 @@ for epoch in range(args.epochs):
         
         if args.varlen:
             out = torch.zeros(len(x)).to(device, dtype=torch.float)
-            ix = m.sum(1) > seqstep
-            out[~ix] = model(x[~ix,-seqstep:], m[~ix,-seqstep:])
-            out[ix] = model(x[ix,:], m[ix,:])
+            for s1,s2 in zip(seqstep, seqstep[1:]):
+                ix = (m.sum(1) > s1) & (m.sum(1) < s2+1)
+                out[ix] = model(x[ix,:], m[ix,:])
         else:
             out = model(x, m)
         loss = criterion(out, y)
