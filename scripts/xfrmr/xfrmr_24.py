@@ -178,7 +178,7 @@ logger.info(args)
 device = 'cpu' if platform.system() == 'Darwin' else 'cuda'
 CUT=0
 DIR=args.dir#'val'
-VERSION='V24'#args.version
+VERSION='V21'#args.version
 debug = False
 validaten_flg = False
 
@@ -676,8 +676,8 @@ class LearnNet2(nn.Module):
         LSTM_UNITS = hidden
         self.diffsize = self.emb_content_id.embedding_dim + self.emb_part.embedding_dim 
         
-        self.seqnet1 = nn.GRU(IN_UNITSQ, LSTM_UNITS, bidirectional=False, batch_first=True)
-        self.seqnet2 = nn.GRU(IN_UNITSQA + LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
+        self.seqnet1 = nn.LSTM(IN_UNITSQ, LSTM_UNITS, bidirectional=False, batch_first=True)
+        self.seqnet2 = nn.LSTM(IN_UNITSQA + LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
         self.atten2 = Attention(LSTM_UNITS, batch_first=True) # 2 is bidrectional
         
         self.linear1 = nn.Linear(LSTM_UNITS, LSTM_UNITS//2)
