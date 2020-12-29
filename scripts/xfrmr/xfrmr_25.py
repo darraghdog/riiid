@@ -681,7 +681,7 @@ class LearnNet2(nn.Module):
         #self.seqnet1 = nn.LSTM(IN_UNITSQ, LSTM_UNITS, bidirectional=False, batch_first=True)
         #self.seqnet2 = nn.LSTM(IN_UNITSQA + LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
 
-        self.seqnet = nn.LSTM(IN_UNITSQA + IN_UNITSQ, LSTM_UNITS, bidirectional=False, batch_first=True).half()
+        self.seqnet = nn.LSTM(IN_UNITSQA + IN_UNITSQ, LSTM_UNITS, bidirectional=False, batch_first=True)
         self.atten2 = Attention(LSTM_UNITS, batch_first=True) # 2 is bidrectional
         
         self.linear1 = nn.Linear(LSTM_UNITS, LSTM_UNITS//2)
