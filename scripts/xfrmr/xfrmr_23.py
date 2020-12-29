@@ -691,8 +691,8 @@ class LearnNet2(nn.Module):
         self.seqnet2 = nn.LSTM(IN_UNITSQA + LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
         
         LSTMState = namedtuple('LSTMState', ['hx', 'cx'])
-        self.state = LSTMState(torch.zeros(args.maxseq, LSTM_UNITS), \
-                               torch.zeros(args.maxseq, LSTM_UNITS)).to(device)
+        self.state = LSTMState(torch.zeros(args.maxseq, LSTM_UNITS).to(device), \
+                               torch.zeros(args.maxseq, LSTM_UNITS).to(device))
         self.lstm1 = LSTMLayer(LSTMCell, IN_UNITSQ, LSTM_UNITS)
         self.lstm2 = LSTMLayer(LSTMCell, IN_UNITSQA + LSTM_UNITS, LSTM_UNITS)
         self.atten2 = Attention(LSTM_UNITS, batch_first=True) # 2 is bidrectional
