@@ -738,7 +738,7 @@ class LearnNet2(nn.Module):
         hiddenqa, _ = self.seqnet2(xinpqa)
         '''
         xinpqa = torch.cat([embcatqa, contmat, embcatq, embcatqdiff], 2)
-        hiddenqa, _ = self.seqnet2(xinpqa)
+        hiddenqa, _ = self.seqnet(xinpqa)
         hiddenqa, _ = self.atten2(hiddenqa, m)
         
         # Take last hidden unit
