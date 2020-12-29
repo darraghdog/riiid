@@ -181,7 +181,7 @@ logger.info(args)
 device = 'cpu' if platform.system() == 'Darwin' else 'cuda'
 CUT=0
 DIR=args.dir#'val'
-VERSION='V21'#args.version
+VERSION='V23'#args.version
 debug = False
 validaten_flg = False
 
@@ -691,7 +691,7 @@ class LearnNet2(nn.Module):
         self.seqnet2 = nn.LSTM(IN_UNITSQA + LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
         
         LSTMState = namedtuple('LSTMState', ['hx', 'cx'])
-        self.state = LSTMState(torch.zeros(args.maxseq, LSTM_UNITS).to(device), \
+        self.state = LSTMState(torch.zeros(args.maxseq, LSTM_UNITS), \
                                torch.zeros(args.maxseq, LSTM_UNITS).to(device))
         self.lstm1 = LSTMLayer(LSTMCell, IN_UNITSQ, LSTM_UNITS)
         self.lstm2 = LSTMLayer(LSTMCell, IN_UNITSQA + LSTM_UNITS, LSTM_UNITS)
@@ -748,13 +748,11 @@ class LearnNet2(nn.Module):
         # Weighted sum of tags - hopefully good weights are learnt
         xinpq = torch.cat([embcatq, embcatqdiff], 2)
         
-        
-        
-        hiddenq, _ = self.lstm1(xinpq, self.state)
-        # hiddenq, lengths = self.seqnet1(xinpq)
+        # hiddenq, _ = self.lstm1(xinpq, self.state)
+        hiddenq, lengths = self.seqnet1(xinpq)
         xinpqa = torch.cat([embcatqa, contmat, hiddenq], 2)
-        # hiddenqa, _ = self.seqnet2(xinpqa)
-        hiddenqa, _ = self.lstm2(xinpqa, self.state)
+        hiddenqa, _ = self.seqnet2(xinpqa)
+        # hiddenqa, _ = self.lstm2(xinpqa, self.state)
         hiddenqa, _ = self.atten2(hiddenqa, m)
         
         # Take last hidden unit
