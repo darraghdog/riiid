@@ -166,14 +166,12 @@ arg('--n_layers', type=int, default=2)
 arg('--n_heads', type=int, default=8)
 arg('--dumpdata', type=bool, default=0)
 arg('--bags', type=int, default=4)
-arg('--varlen', type=int, default=1)
 arg('--model', type=str, default='lstm')
 arg('--label-smoothing', type=float, default=0.01)
 arg('--dir', type=str, default='val')
 #arg('--version', type=str, default='V05')
 args = parser.parse_args()
 args.dumpdata = bool(args.dumpdata)
-args.varlen = bool(args.varlen)
 logger.info(args)
 
 
@@ -440,11 +438,10 @@ class Attention(nn.Module):
             if l < max_len:
                 mask[i, :l] = 0
         '''
-        mask = torch.tensor(mask.float(), requires_grad=True).to(device)
+        mask = torch.tensor(m.float(), requires_grad=True).to(device)
 
         # apply mask and renormalize attention scores (weights)
         masked = attentions * mask
-        
         _sums = masked.sum(-1).unsqueeze(-1)  # sums per row
         
         attentions = masked.div(_sums)
@@ -679,8 +676,10 @@ class LearnNet2(nn.Module):
         LSTM_UNITS = hidden
         self.diffsize = self.emb_content_id.embedding_dim + self.emb_part.embedding_dim 
         
-        self.seqnet1 = nn.LSTM(IN_UNITSQ, LSTM_UNITS, bidirectional=False, batch_first=True)
-        self.seqnet2 = nn.LSTM(IN_UNITSQA + LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
+        #self.seqnet1 = nn.LSTM(IN_UNITSQ, LSTM_UNITS, bidirectional=False, batch_first=True)
+        #self.seqnet2 = nn.LSTM(IN_UNITSQA + LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
+
+        self.seqnet = nn.LSTM(IN_UNITSQA + IN_UNITSQ, LSTM_UNITS, bidirectional=False, batch_first=True)
         self.atten2 = Attention(LSTM_UNITS, batch_first=True) # 2 is bidrectional
         
         self.linear1 = nn.Linear(LSTM_UNITS, LSTM_UNITS//2)
@@ -732,9 +731,13 @@ class LearnNet2(nn.Module):
         contmat = contmat * self.cont_wts
         
         # Weighted sum of tags - hopefully good weights are learnt
+        '''
         xinpq = torch.cat([embcatq, embcatqdiff], 2)
         hiddenq, lengths = self.seqnet1(xinpq)
         xinpqa = torch.cat([embcatqa, contmat, hiddenq], 2)
+        hiddenqa, _ = self.seqnet2(xinpqa)
+        '''
+        xinpqa = torch.cat([embcatqa, contmat, embcatq, embcatqdiff], 2)
         hiddenqa, _ = self.seqnet2(xinpqa)
         hiddenqa, _ = self.atten2(hiddenqa, m)
         
@@ -776,6 +779,7 @@ x, m, y = next(iter(trnloader))
 #       np.split(trndataset.quidx[:(len(trndataset.quidx) // 2056)*2056,0], len(trndataset.quidx) // 2056 )]
 #pd.Series(mls).plot()
 
+
 # Prep class for inference
 if args.dumpdata:
     logger.info('Dump objects - tail of maxseq')
@@ -814,7 +818,6 @@ for epoch in range(args.epochs):
     # Sort forward
     trndataset.quidx = randShuffleSort(trndataset.quidxbackup)
     trnloader = DataLoader(trndataset, shuffle=False, **loaderargs)
-    seqstep = list(range(0, args.maxseq+1, 128))
     
     for step, batch in pbartrn:
 
@@ -826,13 +829,7 @@ for epoch in range(args.epochs):
         x = torch.autograd.Variable(x, requires_grad=True)
         y = torch.autograd.Variable(y)
         
-        if args.varlen:
-            out = torch.zeros(len(x)).to(device, dtype=torch.float)
-            for s1,s2 in zip(seqstep, seqstep[1:]):
-                ix = (m.sum(1) > s1) & (m.sum(1) < s2+1)
-                out[ix] = model(x[ix,:], m[ix,:])
-        else:
-            out = model(x, m)
+        out = model(x, m)
         loss = criterion(out, y)
         loss.backward()
         optimizer.step()
