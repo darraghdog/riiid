@@ -36,6 +36,7 @@ from tools.config import load_config
 from transformers import XLMModel, XLMConfig
 # https://github.com/asappresearch/sru
 from collections import namedtuple
+torch.backends.cudnn.deterministic = True
 
 warnings.filterwarnings("ignore")
 pd.set_option('display.max_columns', None)
