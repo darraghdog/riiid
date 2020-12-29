@@ -786,7 +786,6 @@ x, m, y = next(iter(trnloader))
 #       np.split(trndataset.quidx[:(len(trndataset.quidx) // 2056)*2056,0], len(trndataset.quidx) // 2056 )]
 #pd.Series(mls).plot()
 
-
 # Prep class for inference
 if args.dumpdata:
     logger.info('Dump objects - tail of maxseq')
