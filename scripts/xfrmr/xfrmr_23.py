@@ -687,8 +687,8 @@ class LearnNet2(nn.Module):
         LSTM_UNITS = hidden
         self.diffsize = self.emb_content_id.embedding_dim + self.emb_part.embedding_dim 
         
-        self.seqnet1 = nn.LSTM(IN_UNITSQ, LSTM_UNITS, bidirectional=False, batch_first=True)
-        self.seqnet2 = nn.LSTM(IN_UNITSQA + LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
+        self.seqnet1 = nn.GRU(IN_UNITSQ, LSTM_UNITS, bidirectional=False, batch_first=True)
+        self.seqnet2 = nn.GRU(IN_UNITSQA + LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
         
         LSTMState = namedtuple('LSTMState', ['hx', 'cx'])
         self.state = LSTMState(torch.zeros(args.maxseq, LSTM_UNITS), \
