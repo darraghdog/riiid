@@ -40,7 +40,7 @@ pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows',1000)
 pd.set_option('display.width', 1000)
 pd.set_option('display.float_format', lambda x: '%.3f' % x)
-logger = get_logger('Train', 'INFO')
+logger = get_logger('Stack', 'INFO')
 
 # funcs for user stats with loop
 def add_user_feats(df, pdicts, update = True):
@@ -581,8 +581,10 @@ for step, batch in pbarval:
 preddf = pd.concat(y_predls, 0)
 preddf['yact'] = y_act
 
+logger.info(f'Preddf head \n {preddf.head()}')
+logger.info(f"Preddf correlations \n {preddf.filter(like='pred').corr()}")
+
 for col, colpred in preddf.filter(like='pred').iteritems():
-    col, colpred
-    auc_score = roc_auc_score(y_act, y_pred )
+    auc_score = roc_auc_score(y_act, colpred )
     logger.info(f'Valid column {col} AUC Score {auc_score:.5f}')
 dumpobj(f'data/{DIR}/preddf_lvl1_{VERSION}.pk', preddf)
