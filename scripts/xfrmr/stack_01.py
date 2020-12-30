@@ -568,7 +568,7 @@ contcols = modeldict['V12'].contcols
 for step, batch in pbarval:
     batchpreds = [] 
     x, m, y = batch
-    preddfb = pd.DataFrame(x[:, -1, models[0].cont_idx].detach().cpu().numpy(), columns = contcols)
+    preddfb = pd.DataFrame(x[:, -1, contidx].detach().cpu().numpy(), columns = contcols)
     x = x.to(device, dtype=torch.float)
     m = m.to(device, dtype=torch.long)
     for k, model in modeldict.items():
