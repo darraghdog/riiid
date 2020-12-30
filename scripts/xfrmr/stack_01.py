@@ -520,6 +520,7 @@ class SAKTDataset(Dataset):
         return umat, umask, target
 
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
+logger.info('Create loader')
 pdicts['daargs'] = daargs = {'cols':pdicts['MODCOLS'], 
           'padvals':pdicts['PADVALS'], 
           'carryfwdcols': pdicts['CARRYTASKFWD'],
@@ -541,6 +542,7 @@ laargs = {'modcols':pdicts['MODCOLS'],
           'hidden' : 512}
 # model = self = LearnNet(**maargs)
 # model.to(device)
+logger.info('Load weights')
 def load_model_weights(modfn, wtname, laargs):
     logger.info(f'load model version {modfn}, weights {wtname}')
     model = modfn(**laargs)
@@ -599,4 +601,6 @@ logger.info(f"Preddf correlations \n {preddf.filter(like='pred').corr()}")
 for col, colpred in preddf.filter(like='pred').iteritems():
     auc_score = roc_auc_score(y_act, colpred )
     logger.info(f'Valid column {col} AUC Score {auc_score:.5f}')
-dumpobj(f'data/{DIR}/preddf_lvl1_{VERSION}.pk', preddf)
+outfile = f'data/{DIR}/preddf_lvl1_{VERSION}.pk'
+dumpobj(outfile, preddf)
+logger.info(f'Preds dumped to {outfile}')
