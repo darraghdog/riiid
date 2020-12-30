@@ -199,6 +199,7 @@ if args.loaddata:
     valid = loadobj(f'data/{DIR}/valid_{VERSION}_pre.pk')
     logger.info('Load train')
     train = loadobj(f'data/{DIR}/train_{VERSION}_pre.pk')
+    logger.info('Done loading....')
 else:
 
     valid = pd.read_feather(f'data/{DIR}/cv{CUT+1}_valid.feather')[FILTCOLS]#.head(10**5)
