@@ -32,7 +32,7 @@ from torch.cuda.amp import autocast
 from sklearn.metrics import log_loss
 from tools.utils import get_logger, SpatialDropout, split_tags
 from tools.config import load_config
-from tools.zoo import LearnNet12, LearnNet20, LearnNet21, LearnNet24
+from tools.zoo import LearnNet12,LearnNet14, LearnNet20, LearnNet21, LearnNet24
 from transformers import XLMModel, XLMConfig
 
 warnings.filterwarnings("ignore")
@@ -546,6 +546,7 @@ def load_model_weights(modfn, wtname, laargs):
     model = model.eval()
     return model
 
+from copy import deepcopy
 modfns = [LearnNet12, LearnNet20, LearnNet21, LearnNet24]
 wtnames = [f'data/{DIR}/{VERSION}/basemodels/lstm_V12_hidden512_ep4.bin', 
            f'data/{DIR}/{VERSION}/basemodels/lstm_V20_hidden512_ep4.bin', 
@@ -554,6 +555,12 @@ wtnames = [f'data/{DIR}/{VERSION}/basemodels/lstm_V12_hidden512_ep4.bin',
 mkeys = ['V12', 'V20', 'V21', 'V24']
 modeldict = dict((k,load_model_weights(modfn, wtname, laargs)) \
                  for (k,modfn, wtname) in zip(mkeys,modfns, wtnames))
+wts14 = f'data/{DIR}/{VERSION}/basemodels/lstm_valfull_V14_hidden512_ep12.bin'
+laargs14 = deepcopy(laargs)
+laargs14['maxseq'] = 128
+modeldict['V14'] = load_model_weights(LearnNet14, wts14, laargs14)
+
+modeldict['V14'](x[:,-128:], m[:,-128:], device )
 
 logger.info('Start inference')
 best_val_loss = 100.
@@ -567,14 +574,15 @@ contidx = modeldict['V12'].cont_idx
 contcols = modeldict['V12'].contcols
 
 for step, batch in pbarval:
-    batchpreds = [] 
     x, m, y = batch
     preddfb = pd.DataFrame(x[:, -1, contidx].detach().cpu().numpy(), columns = contcols)
     x = x.to(device, dtype=torch.float)
     m = m.to(device, dtype=torch.long)
     for k, model in modeldict.items():
-        with torch.no_grad():
-            out = model(x, m)
+        if k=='V14':
+            with torch.no_grad(): out = model(x[:,-128:], m[:,-128:], device )
+        else:
+            with torch.no_grad(): out = model(x, m)
         preddfb[f'pred{k}'] = out.detach().cpu().numpy()
     y_predls.append(preddfb)
     
