@@ -561,7 +561,7 @@ pbarval = tqdm(enumerate(valloader),
 y_predls = []
 y_act = valid['answered_correctly'].values
 contidx = models[0].cont_idx
-    contcols = models[0].contcols
+contcols = models[0].contcols
 
 for step, batch in pbarval:
     batchpreds = [] 
