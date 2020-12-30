@@ -193,8 +193,11 @@ FILTCOLS = ['row_id', 'user_id', 'content_id', 'content_type_id',  \
 logger.info(f'Loaded columns {", ".join(FILTCOLS)}')
 
 if args.loaddata:
+    logger.info('Load pdicts')
     pdicts = loadobj(f'data/{DIR}/pdicts_{VERSION}_pre.pk')
+    logger.info('Load valid')
     valid = loadobj(f'data/{DIR}/valid_{VERSION}_pre.pk')
+    logger.info('Load train')
     train = loadobj(f'data/{DIR}/train_{VERSION}_pre.pk')
 else:
 
@@ -372,11 +375,8 @@ else:
     pdicts['qdf'] = qdf
 
 if args.dumpdata:
-    logger.info('Load pdicts')
     dumpobj(f'data/{DIR}/pdicts_{VERSION}_pre.pk', pdicts)
-    logger.info('Load valid')
     dumpobj(f'data/{DIR}/valid_{VERSION}_pre.pk', valid)
-    logger.info('Load train')
     dumpobj(f'data/{DIR}/train_{VERSION}_pre.pk', train)
     
     
