@@ -192,189 +192,191 @@ FILTCOLS = ['row_id', 'user_id', 'content_id', 'content_type_id',  \
                        'timestamp', 'user_answer']
 logger.info(f'Loaded columns {", ".join(FILTCOLS)}')
 
-valid = pd.read_feather(f'data/{DIR}/cv{CUT+1}_valid.feather')[FILTCOLS]#.head(10**5)
-train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS]#.head(2*10**6)
-
-train = train.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
-valid = valid.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
-
-# Joins questions
-ldf = pd.read_csv('data/lectures.csv')
-ldf.type_of = ldf.type_of.str.replace(' ', '_')
-ldict = ldf.set_index('lecture_id').to_dict()
-#lecture_types = [t for t in ldf.type_of.unique() if t!= 'starter']
-
-
-qdf = pd.read_csv('data/questions.csv')
-qdf[[f'tag{i}' for i in range(6)]] =  qdf.tags.fillna('').apply(split_tags).tolist()
-
-bdict = qdf.set_index('question_id')['bundle_id'].to_dict()
-keepcols = ['question_id', 'part', 'bundle_id', 'correct_answer'] + [f'tag{i}' for i in range(6)]
-train = pd.merge(train, qdf[keepcols], left_on = 'content_id', right_on = 'question_id', how = 'left')
-valid = pd.merge(valid, qdf[keepcols], left_on = 'content_id', right_on = 'question_id', how = 'left')
-formatcols =  ['question_id', 'part', 'bundle_id', 'correct_answer', 'user_answer']+ [f'tag{i}' for i in range(6)]
-train[formatcols] = train[formatcols].fillna(0).astype(np.int16)
-valid[formatcols] = valid[formatcols].fillna(0).astype(np.int16)
-
-
-'''
-train.loc[train.content_type_id == False]['question_id'].value_counts().head(1000).sum()
-train.loc[train.content_id == False]['question_id']
-ix = train.content_type_id == False
-a  =pd.crosstab(train[ix].user_id, train[ix].answered_correctly).sort_values(1)
-a['count'] = a.sum(1)
-a['avg'] = a[1].values / ( a[1].values  +  a[0].values )
-a.sort_values('count', ascending = False).head(500)
-a[(a['count']>1000)].avg.mean()
-a[(a['count']>1000)]['count'].sum()
-'''
-
-# How correct is the answer
-def qaRanks(df):
-    aggdf1 = df.groupby(['question_id', 'user_answer', 'correct_answer'])['answered_correctly'].count()
-    aggdf2 = df.groupby(['question_id'])['answered_correctly'].count()
-    aggdf = pd.merge(aggdf1, aggdf2, left_index=True, right_index = True).reset_index()
-    aggdf.columns = ['question_id', 'user_answer', 'correct_answer', 'answcount', 'quescount']
-    aggdf['answerratio'] = (aggdf.answcount / aggdf.quescount).astype(np.float32)
-    rankDf = aggdf.set_index('question_id')[[ 'answerratio', 'answcount']].reset_index()
-    qaRatio = aggdf.set_index(['question_id', 'user_answer']).answerratio.to_dict()
-    qaCorrect = qdf.set_index('question_id').correct_answer.to_dict()
-    return qaRatio, qaCorrect, rankDf
-ix = train.content_type_id == False
-qaRatio, qaCorrect, rankDf = qaRanks(train[ix])
-
-train['prior_question_had_explanation'] = train['prior_question_had_explanation'].astype(np.float32).fillna(2).astype(np.int8)
-valid['prior_question_had_explanation'] = valid['prior_question_had_explanation'].astype(np.float32).fillna(2).astype(np.int8)
-train['prior_question_elapsed_time'] = train['prior_question_elapsed_time'].fillna(0).astype(np.int32)
-valid['prior_question_elapsed_time'] = valid['prior_question_elapsed_time'].fillna(0).astype(np.int32)
-
-content_df1 = train.query('content_type_id == 0')[['content_id','answered_correctly']]\
-                .groupby(['content_id']).agg(['mean', 'count']).astype(np.float32).reset_index()
-content_df1.columns = ['content_id', 'answered_correctly_avg_c', 'answered_correctly_ct_c']
-content_df2 = train.query('content_type_id == 0') \
-                .groupby(['content_id','user_id']).size().reset_index()
-content_df2 = content_df2.groupby(['content_id'])[0].mean().astype(np.float32).reset_index()
-content_df2.columns = ['content_id', 'attempts_avg_c']
-content_df  = pd.merge(content_df1, content_df2, on = 'content_id')
-content_df.columns
-del content_df1, content_df2
-gc.collect()
-
-content_df.iloc[:,1:] = content_df.iloc[:,1:].astype(np.float32)
-train = pd.merge(train, content_df, on=['content_id'], how="left")
-valid = pd.merge(valid, content_df, on=['content_id'], how="left")
-
-
-# Count task container id
-taskcols = ['user_id', 'task_container_id']
-train['task_container_cts'] = train[taskcols][::-1].groupby(taskcols).cumcount()[::-1]
-valid['task_container_cts'] = valid[taskcols][::-1].groupby(taskcols).cumcount()[::-1]
-
-
-# user stats features with loops
-qidx = train.content_type_id == False
-n_users = int(len(train[qidx].user_id.unique()) * 1.2)
-n_users_ques = int(len(train[qidx][['user_id', 'content_id']].drop_duplicates()) * 1.2)
-u_int_cols = ['answered_correctly_sum_u_dict', 'count_u_dict', 'lecture_tag', 'lecture_part', 'lecture_logged', \
-              'content_id_lag',  'pexp_count_u_dict', 'count_u_lect_dict', 'count_u_lect_timestamp'] #'track_b', 'answered_correctly_sum_b_dict',  'count_b_dict', 
-u_float_cols = ['userRatioCum', 'userAvgRatioCum', 'qaRatiocum', 'qaRatioCorrectcum', ]
-uq_int_cols = ['content_id_answered_correctly_sum_u_dict', 'content_id_count_u_dict']
-
-
-pdicts =  {**dict((col, np.zeros(n_users, dtype= np.uint32)) for col in u_int_cols), 
-         **dict((col, np.zeros(n_users, dtype= np.float32)) for col in u_float_cols), 
-         **dict((col, np.zeros(n_users_ques, dtype= np.uint8)) for col in uq_int_cols), 
-         **{'qaRatio' : qaRatio, 'qaCorrect': qaCorrect}}
-
-
-cid_udict = train[qidx][['user_id', 'content_id']].drop_duplicates() \
-                            .reset_index(drop=True).reset_index().groupby('content_id') \
-                            .apply(lambda x : x.set_index('user_id')['index'].to_dict()  )
-pdicts['uqidx'] = 13523 * [{}]
-for id_,row_ in cid_udict.iteritems():
-    pdicts['uqidx'][id_] = row_
-del cid_udict
-pdicts['max_uqidx'] = max(max(d.values()) for d in pdicts['uqidx'] if d!= {})
-# pdicts['uqidx'] = train[qidx][['user_id', 'content_id']].drop_duplicates() \
-#            .reset_index(drop = True).reset_index() \
-#                .set_index(['user_id', 'content_id']).to_dict()['index']
-pdicts['uidx'] = train[qidx][['user_id']].drop_duplicates() \
-            .reset_index(drop = True).reset_index() \
-                .set_index(['user_id']).to_dict()['index']
-pdicts['max_uidx'] = max(v for v in pdicts['uidx'].values())
-
 if args.loaddata:
     pdicts = loadobj(f'data/{DIR}/pdicts_{VERSION}_pre.pk')
     valid = loadobj(f'data/{DIR}/valid_{VERSION}_pre.pk')
     train = loadobj(f'data/{DIR}/train_{VERSION}_pre.pk')
 else:
+
+    valid = pd.read_feather(f'data/{DIR}/cv{CUT+1}_valid.feather')[FILTCOLS]#.head(10**5)
+    train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS]#.head(2*10**6)
+    
+    train = train.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
+    valid = valid.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
+    
+    # Joins questions
+    ldf = pd.read_csv('data/lectures.csv')
+    ldf.type_of = ldf.type_of.str.replace(' ', '_')
+    ldict = ldf.set_index('lecture_id').to_dict()
+    #lecture_types = [t for t in ldf.type_of.unique() if t!= 'starter']
+    
+    
+    qdf = pd.read_csv('data/questions.csv')
+    qdf[[f'tag{i}' for i in range(6)]] =  qdf.tags.fillna('').apply(split_tags).tolist()
+    
+    bdict = qdf.set_index('question_id')['bundle_id'].to_dict()
+    keepcols = ['question_id', 'part', 'bundle_id', 'correct_answer'] + [f'tag{i}' for i in range(6)]
+    train = pd.merge(train, qdf[keepcols], left_on = 'content_id', right_on = 'question_id', how = 'left')
+    valid = pd.merge(valid, qdf[keepcols], left_on = 'content_id', right_on = 'question_id', how = 'left')
+    formatcols =  ['question_id', 'part', 'bundle_id', 'correct_answer', 'user_answer']+ [f'tag{i}' for i in range(6)]
+    train[formatcols] = train[formatcols].fillna(0).astype(np.int16)
+    valid[formatcols] = valid[formatcols].fillna(0).astype(np.int16)
+    
+    
+    '''
+    train.loc[train.content_type_id == False]['question_id'].value_counts().head(1000).sum()
+    train.loc[train.content_id == False]['question_id']
+    ix = train.content_type_id == False
+    a  =pd.crosstab(train[ix].user_id, train[ix].answered_correctly).sort_values(1)
+    a['count'] = a.sum(1)
+    a['avg'] = a[1].values / ( a[1].values  +  a[0].values )
+    a.sort_values('count', ascending = False).head(500)
+    a[(a['count']>1000)].avg.mean()
+    a[(a['count']>1000)]['count'].sum()
+    '''
+    
+    # How correct is the answer
+    def qaRanks(df):
+        aggdf1 = df.groupby(['question_id', 'user_answer', 'correct_answer'])['answered_correctly'].count()
+        aggdf2 = df.groupby(['question_id'])['answered_correctly'].count()
+        aggdf = pd.merge(aggdf1, aggdf2, left_index=True, right_index = True).reset_index()
+        aggdf.columns = ['question_id', 'user_answer', 'correct_answer', 'answcount', 'quescount']
+        aggdf['answerratio'] = (aggdf.answcount / aggdf.quescount).astype(np.float32)
+        rankDf = aggdf.set_index('question_id')[[ 'answerratio', 'answcount']].reset_index()
+        qaRatio = aggdf.set_index(['question_id', 'user_answer']).answerratio.to_dict()
+        qaCorrect = qdf.set_index('question_id').correct_answer.to_dict()
+        return qaRatio, qaCorrect, rankDf
+    ix = train.content_type_id == False
+    qaRatio, qaCorrect, rankDf = qaRanks(train[ix])
+    
+    train['prior_question_had_explanation'] = train['prior_question_had_explanation'].astype(np.float32).fillna(2).astype(np.int8)
+    valid['prior_question_had_explanation'] = valid['prior_question_had_explanation'].astype(np.float32).fillna(2).astype(np.int8)
+    train['prior_question_elapsed_time'] = train['prior_question_elapsed_time'].fillna(0).astype(np.int32)
+    valid['prior_question_elapsed_time'] = valid['prior_question_elapsed_time'].fillna(0).astype(np.int32)
+    
+    content_df1 = train.query('content_type_id == 0')[['content_id','answered_correctly']]\
+                    .groupby(['content_id']).agg(['mean', 'count']).astype(np.float32).reset_index()
+    content_df1.columns = ['content_id', 'answered_correctly_avg_c', 'answered_correctly_ct_c']
+    content_df2 = train.query('content_type_id == 0') \
+                    .groupby(['content_id','user_id']).size().reset_index()
+    content_df2 = content_df2.groupby(['content_id'])[0].mean().astype(np.float32).reset_index()
+    content_df2.columns = ['content_id', 'attempts_avg_c']
+    content_df  = pd.merge(content_df1, content_df2, on = 'content_id')
+    content_df.columns
+    del content_df1, content_df2
+    gc.collect()
+    
+    content_df.iloc[:,1:] = content_df.iloc[:,1:].astype(np.float32)
+    train = pd.merge(train, content_df, on=['content_id'], how="left")
+    valid = pd.merge(valid, content_df, on=['content_id'], how="left")
+    
+    
+    # Count task container id
+    taskcols = ['user_id', 'task_container_id']
+    train['task_container_cts'] = train[taskcols][::-1].groupby(taskcols).cumcount()[::-1]
+    valid['task_container_cts'] = valid[taskcols][::-1].groupby(taskcols).cumcount()[::-1]
+    
+    
+    # user stats features with loops
+    qidx = train.content_type_id == False
+    n_users = int(len(train[qidx].user_id.unique()) * 1.2)
+    n_users_ques = int(len(train[qidx][['user_id', 'content_id']].drop_duplicates()) * 1.2)
+    u_int_cols = ['answered_correctly_sum_u_dict', 'count_u_dict', 'lecture_tag', 'lecture_part', 'lecture_logged', \
+                  'content_id_lag',  'pexp_count_u_dict', 'count_u_lect_dict', 'count_u_lect_timestamp'] #'track_b', 'answered_correctly_sum_b_dict',  'count_b_dict', 
+    u_float_cols = ['userRatioCum', 'userAvgRatioCum', 'qaRatiocum', 'qaRatioCorrectcum', ]
+    uq_int_cols = ['content_id_answered_correctly_sum_u_dict', 'content_id_count_u_dict']
+    
+    
+    pdicts =  {**dict((col, np.zeros(n_users, dtype= np.uint32)) for col in u_int_cols), 
+             **dict((col, np.zeros(n_users, dtype= np.float32)) for col in u_float_cols), 
+             **dict((col, np.zeros(n_users_ques, dtype= np.uint8)) for col in uq_int_cols), 
+             **{'qaRatio' : qaRatio, 'qaCorrect': qaCorrect}}
+    
+    
+    cid_udict = train[qidx][['user_id', 'content_id']].drop_duplicates() \
+                                .reset_index(drop=True).reset_index().groupby('content_id') \
+                                .apply(lambda x : x.set_index('user_id')['index'].to_dict()  )
+    pdicts['uqidx'] = 13523 * [{}]
+    for id_,row_ in cid_udict.iteritems():
+        pdicts['uqidx'][id_] = row_
+    del cid_udict
+    pdicts['max_uqidx'] = max(max(d.values()) for d in pdicts['uqidx'] if d!= {})
+    # pdicts['uqidx'] = train[qidx][['user_id', 'content_id']].drop_duplicates() \
+    #            .reset_index(drop = True).reset_index() \
+    #                .set_index(['user_id', 'content_id']).to_dict()['index']
+    pdicts['uidx'] = train[qidx][['user_id']].drop_duplicates() \
+                .reset_index(drop = True).reset_index() \
+                    .set_index(['user_id']).to_dict()['index']
+    pdicts['max_uidx'] = max(v for v in pdicts['uidx'].values())
+
+
     train = add_user_feats(train, pdicts)
     valid = add_user_feats(valid, pdicts)
-    if args.dumpdata:
-        dumpobj(f'data/{DIR}/pdicts_{VERSION}_pre.pk', pdicts)
-        dumpobj(f'data/{DIR}/valid_{VERSION}_pre.pk', valid)
-        dumpobj(f'data/{DIR}/train_{VERSION}_pre.pk', train)
 
-
-# For start off remove lectures
-train = train.loc[train.content_type_id == False].reset_index(drop=True)
-valid = valid.loc[valid.content_type_id == False].reset_index(drop=True)
-
-train['content_user_answer']  = train['user_answer'] + 4 * train['content_id'].astype(np.int32)
-valid['content_user_answer']  = valid['user_answer'] + 4 * valid['content_id'].astype(np.int32)
-#train['answered_correctly_ct_log'] = np.log1p(train['answered_correctly_ct_c'].fillna(0).astype(np.float32)) - 7.5
-#valid['answered_correctly_ct_log'] = np.log1p(valid['answered_correctly_ct_c'].fillna(0).astype(np.float32)) - 7.5
-
-pdicts['NORMCOLS'] = ['counts___feat0', 'counts___feat1', 'cid_answered_correctly', 
-                      'lecture_ct','lecture_lag', 'answered_correctly_ct_c']
-meanvals = np.log1p(train[pdicts['NORMCOLS']].fillna(0).astype(np.float32)).mean().values
-stdvals = np.log1p(train[pdicts['NORMCOLS']].fillna(0).astype(np.float32)).std().values
-
-pdicts['meanvals'] = meanvals
-pdicts['stdvals'] = stdvals
-train[pdicts['NORMCOLS']] = (np.log1p(train[pdicts['NORMCOLS']].fillna(0).astype(np.float32)) - meanvals) / stdvals
-valid[pdicts['NORMCOLS']] = (np.log1p(valid[pdicts['NORMCOLS']].fillna(0).astype(np.float32)) - meanvals) / stdvals
-
-# Create index for loader
-trnidx = train.reset_index().groupby(['user_id'])['index'].apply(list).to_dict()
-validx = valid.reset_index().groupby(['user_id'])['index'].apply(list).to_dict()
-
-FEATCOLS = ['counts___feat0', 'avgcorrect___feat0', 'counts___feat1', 'avgcorrect___feat1', 
-    'cid_answered_correctly', 'rank_stats_0', 'rank_stats_1'] #
-
-
-pdicts['MODCOLS'] = ['content_id', 'content_type_id', 'prior_question_elapsed_time', \
-           'prior_question_had_explanation', 'task_container_id', 'lecture_tag', 'lecture_part', \
-            'timestamp', 'part', 'bundle_id', 'task_container_cts', \
-                'answered_correctly', 'user_answer', 'correct_answer', 'content_user_answer', 
-                'answered_correctly_avg_c', 'answered_correctly_ct_c', 'attempts_avg_c', 'lecture_ct','lecture_lag'] \
-            + [f'tag{i}' for i in range(6)] + FEATCOLS
-
-# EMBCOLS = ['content_id', 'part', 'bundle_id'] + [f'tag{i}' for i in range(6)]
-pdicts['TARGETCOLS'] = [ 'user_answer', 'answered_correctly', 'correct_answer', 'content_user_answer']
-
-# SHIFT TARGET HERE
-pdicts['CARRYTASKFWD'] = ['counts___feat0', 'avgcorrect___feat0',  \
-                'cid_answered_correctly', 'rank_stats_0', 'rank_stats_1'] #
-
-pdicts['CONTCOLS'] = ['timestamp', 'prior_question_elapsed_time', 'prior_question_had_explanation', \
-            'answered_correctly_avg_c', 'answered_correctly_ct_c', 'attempts_avg_c', \
-            'task_container_cts', 'lecture_ct','lecture_lag'] + FEATCOLS
-pdicts['NOPAD'] = ['prior_question_elapsed_time', 'prior_question_had_explanation', \
-             'timestamp', 'content_type_id', 'task_container_cts'] + pdicts['CONTCOLS']
+    # For start off remove lectures
+    train = train.loc[train.content_type_id == False].reset_index(drop=True)
+    valid = valid.loc[valid.content_type_id == False].reset_index(drop=True)
     
-pdicts['PADVALS'] = train[pdicts['MODCOLS']].max(0) + 1
-pdicts['PADVALS'][pdicts['NOPAD']] = 0
-pdicts['EXTRACOLS'] = ['lag_time_cat',  'elapsed_time_cat']
+    train['content_user_answer']  = train['user_answer'] + 4 * train['content_id'].astype(np.int32)
+    valid['content_user_answer']  = valid['user_answer'] + 4 * valid['content_id'].astype(np.int32)
+    #train['answered_correctly_ct_log'] = np.log1p(train['answered_correctly_ct_c'].fillna(0).astype(np.float32)) - 7.5
+    #valid['answered_correctly_ct_log'] = np.log1p(valid['answered_correctly_ct_c'].fillna(0).astype(np.float32)) - 7.5
+    
+    pdicts['NORMCOLS'] = ['counts___feat0', 'counts___feat1', 'cid_answered_correctly', 
+                          'lecture_ct','lecture_lag', 'answered_correctly_ct_c']
+    meanvals = np.log1p(train[pdicts['NORMCOLS']].fillna(0).astype(np.float32)).mean().values
+    stdvals = np.log1p(train[pdicts['NORMCOLS']].fillna(0).astype(np.float32)).std().values
+    
+    pdicts['meanvals'] = meanvals
+    pdicts['stdvals'] = stdvals
+    train[pdicts['NORMCOLS']] = (np.log1p(train[pdicts['NORMCOLS']].fillna(0).astype(np.float32)) - meanvals) / stdvals
+    valid[pdicts['NORMCOLS']] = (np.log1p(valid[pdicts['NORMCOLS']].fillna(0).astype(np.float32)) - meanvals) / stdvals
+    
+    # Create index for loader
+    trnidx = train.reset_index().groupby(['user_id'])['index'].apply(list).to_dict()
+    validx = valid.reset_index().groupby(['user_id'])['index'].apply(list).to_dict()
+    
+    FEATCOLS = ['counts___feat0', 'avgcorrect___feat0', 'counts___feat1', 'avgcorrect___feat1', 
+        'cid_answered_correctly', 'rank_stats_0', 'rank_stats_1'] #
+    
+    
+    pdicts['MODCOLS'] = ['content_id', 'content_type_id', 'prior_question_elapsed_time', \
+               'prior_question_had_explanation', 'task_container_id', 'lecture_tag', 'lecture_part', \
+                'timestamp', 'part', 'bundle_id', 'task_container_cts', \
+                    'answered_correctly', 'user_answer', 'correct_answer', 'content_user_answer', 
+                    'answered_correctly_avg_c', 'answered_correctly_ct_c', 'attempts_avg_c', 'lecture_ct','lecture_lag'] \
+                + [f'tag{i}' for i in range(6)] + FEATCOLS
+    
+    # EMBCOLS = ['content_id', 'part', 'bundle_id'] + [f'tag{i}' for i in range(6)]
+    pdicts['TARGETCOLS'] = [ 'user_answer', 'answered_correctly', 'correct_answer', 'content_user_answer']
+    
+    # SHIFT TARGET HERE
+    pdicts['CARRYTASKFWD'] = ['counts___feat0', 'avgcorrect___feat0',  \
+                    'cid_answered_correctly', 'rank_stats_0', 'rank_stats_1'] #
+    
+    pdicts['CONTCOLS'] = ['timestamp', 'prior_question_elapsed_time', 'prior_question_had_explanation', \
+                'answered_correctly_avg_c', 'answered_correctly_ct_c', 'attempts_avg_c', \
+                'task_container_cts', 'lecture_ct','lecture_lag'] + FEATCOLS
+    pdicts['NOPAD'] = ['prior_question_elapsed_time', 'prior_question_had_explanation', \
+                 'timestamp', 'content_type_id', 'task_container_cts'] + pdicts['CONTCOLS']
+        
+    pdicts['PADVALS'] = train[pdicts['MODCOLS']].max(0) + 1
+    pdicts['PADVALS'][pdicts['NOPAD']] = 0
+    pdicts['EXTRACOLS'] = ['lag_time_cat',  'elapsed_time_cat']
+    
+    #self = SAKTDataset(train, MODCOLS, PADVALS)
+    pdicts['keepcols'] = keepcols
+    pdicts['content_df'] = content_df
+    pdicts['ldict'] = ldict
+    pdicts['bdict'] = bdict
+    pdicts['qdf'] = qdf
 
-#self = SAKTDataset(train, MODCOLS, PADVALS)
-pdicts['keepcols'] = keepcols
-pdicts['content_df'] = content_df
-pdicts['ldict'] = ldict
-pdicts['bdict'] = bdict
-pdicts['qdf'] = qdf
-
-
+if args.dumpdata:
+    dumpobj(f'data/{DIR}/pdicts_{VERSION}_pre.pk', pdicts)
+    dumpobj(f'data/{DIR}/valid_{VERSION}_pre.pk', valid)
+    dumpobj(f'data/{DIR}/train_{VERSION}_pre.pk', train)
+    
+    
 class SAKTDataset(Dataset):
     def __init__(self, data, basedf, cols, padvals, extracols, carryfwdcols, 
                  maxseq = args.maxseq, has_target = True, submit = False): 
