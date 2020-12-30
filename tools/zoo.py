@@ -60,7 +60,7 @@ class Attention21(nn.Module):
             if l < max_len:
                 mask[i, :l] = 0
         '''
-        mask = torch.tensor(mask.float(), requires_grad=True).to(device)
+        mask = torch.tensor(mask.float(), requires_grad=True)
 
         # apply mask and renormalize attention scores (weights)
         masked = attentions * mask
