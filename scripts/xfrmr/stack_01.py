@@ -372,8 +372,11 @@ else:
     pdicts['qdf'] = qdf
 
 if args.dumpdata:
+    logger.info('Load pdicts')
     dumpobj(f'data/{DIR}/pdicts_{VERSION}_pre.pk', pdicts)
+    logger.info('Load valid')
     dumpobj(f'data/{DIR}/valid_{VERSION}_pre.pk', valid)
+    logger.info('Load train')
     dumpobj(f'data/{DIR}/train_{VERSION}_pre.pk', train)
     
     
