@@ -34,6 +34,7 @@ from tools.utils import get_logger, SpatialDropout, split_tags
 from tools.config import load_config
 from tools.zoo import LearnNet12,LearnNet14, LearnNet20, LearnNet21, LearnNet24
 from transformers import XLMModel, XLMConfig
+from copy import deepcopy
 
 warnings.filterwarnings("ignore")
 pd.set_option('display.max_columns', None)
@@ -552,7 +553,6 @@ def load_model_weights(modfn, wtname, laargs):
     model = model.eval()
     return model
 
-from copy import deepcopy
 modfns = [LearnNet12, LearnNet20, LearnNet21, LearnNet24]
 wtnames = [f'data/{DIR}/{VERSION}/basemodels/lstm_V12_hidden512_ep4.bin', 
            f'data/{DIR}/{VERSION}/basemodels/lstm_V20_hidden512_ep4.bin', 
@@ -565,8 +565,6 @@ wts14 = f'data/{DIR}/{VERSION}/basemodels/lstm_valfull_V14_hidden512_ep12.bin'
 laargs14 = deepcopy(laargs)
 laargs14['maxseq'] = 128
 modeldict['V14'] = load_model_weights(LearnNet14, wts14, laargs14)
-
-modeldict['V14'](x[:,-128:], m[:,-128:], device )
 
 logger.info('Start inference')
 best_val_loss = 100.
