@@ -167,11 +167,13 @@ arg('--n_heads', type=int, default=8)
 arg('--dumpdata', type=bool, default=0)
 arg('--bags', type=int, default=4)
 arg('--model', type=str, default='lstm')
+arg('--infer', type=str, default=0)
 arg('--label-smoothing', type=float, default=0.01)
 arg('--dir', type=str, default='val')
 #arg('--version', type=str, default='V05')
 args = parser.parse_args()
 args.dumpdata = bool(args.dumpdata)
+args.infer = bool(args.infer)
 logger.info(args)
 
 
@@ -806,50 +808,53 @@ trn_lossls = []
 predls = []
 bags = args.bags
 for epoch in range(args.epochs):
-    for param in model.parameters():
-        param.requires_grad = True
-    model.train()  
-    pbartrn = tqdm(enumerate(trnloader), 
-                total = len(trndataset)//loaderargs['batch_size'], 
-                desc=f"Train epoch {epoch}", ncols=0)
-    trn_loss = 0.
     
-    # Sort forward
-    trndataset.quidx = randShuffleSort(trndataset.quidxbackup)
-    trnloader = DataLoader(trndataset, shuffle=False, **loaderargs)
-    
-    for step, batch in pbartrn:
-
-        optimizer.zero_grad()
-        x, m, y = batch
-        x = x.to(device, dtype=torch.float)
-        m = m.to(device, dtype=torch.long)
-        y = y.to(device, dtype=torch.float)
-        x = torch.autograd.Variable(x, requires_grad=True)
-        y = torch.autograd.Variable(y)
+    if not args.infer:
         
-        out = model(x, m)
-        loss = criterion(out, y)
-        loss.backward()
-        optimizer.step()
-        '''
-        with autocast():
+        for param in model.parameters():
+            param.requires_grad = True
+        model.train()  
+        pbartrn = tqdm(enumerate(trnloader), 
+                    total = len(trndataset)//loaderargs['batch_size'], 
+                    desc=f"Train epoch {epoch}", ncols=0)
+        trn_loss = 0.
+        
+        # Sort forward
+        trndataset.quidx = randShuffleSort(trndataset.quidxbackup)
+        trnloader = DataLoader(trndataset, shuffle=False, **loaderargs)
+
+        for step, batch in pbartrn:
+    
+            optimizer.zero_grad()
+            x, m, y = batch
+            x = x.to(device, dtype=torch.float)
+            m = m.to(device, dtype=torch.long)
+            y = y.to(device, dtype=torch.float)
+            x = torch.autograd.Variable(x, requires_grad=True)
+            y = torch.autograd.Variable(y)
+            
             out = model(x, m)
             loss = criterion(out, y)
-        if device != 'cpu':
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
-        else:
             loss.backward()
             optimizer.step()
-            optimizer.zero_grad()
-        '''
-        trn_loss += loss.item()
-        trn_lossls.append(loss.item())
-        trn_lossls = trn_lossls[-1000:]
-        pbartrn.set_postfix({'train loss': trn_loss / (step + 1), \
-                             'last 1000': sum(trn_lossls) / len(trn_lossls) })
+            '''
+            with autocast():
+                out = model(x, m)
+                loss = criterion(out, y)
+            if device != 'cpu':
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                loss.backward()
+                optimizer.step()
+                optimizer.zero_grad()
+            '''
+            trn_loss += loss.item()
+            trn_lossls.append(loss.item())
+            trn_lossls = trn_lossls[-1000:]
+            pbartrn.set_postfix({'train loss': trn_loss / (step + 1), \
+                                 'last 1000': sum(trn_lossls) / len(trn_lossls) })
     
     pbarval = tqdm(enumerate(valloader), 
                 total = len(valdataset)//loaderargs['batch_size'], 
@@ -857,7 +862,12 @@ for epoch in range(args.epochs):
     y_predls = []
     y_act = valid['answered_correctly'].values
     model.eval()
-    torch.save(model.state_dict(), f'data/{DIR}/{args.model}_{VERSION}_hidden{args.hidden}_ep{epoch}.bin')
+    if args.infer:
+        checkpoint = torch.load(f'data/{DIR}/{args.model}_{VERSION}_hidden{args.hidden}_ep{epoch}.bin', \
+                                map_location=torch.device(device))
+        model.load_state_dict(checkpoint)
+    else:
+        torch.save(model.state_dict(), f'data/{DIR}/{args.model}_{VERSION}_hidden{args.hidden}_ep{epoch}.bin')
     for step, batch in pbarval:
         x, m, y = batch
         x = x.to(device, dtype=torch.float)
