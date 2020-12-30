@@ -540,6 +540,7 @@ laargs = {'modcols':pdicts['MODCOLS'],
 def load_model_weights(modfn, wtname, laargs):
     logger.info(f'load model version {modfn}, weights {wtname}')
     model = modfn(**laargs)
+    model.to(device)
     checkpoint = torch.load(wtname,  map_location=torch.device(device))
     model.load_state_dict(checkpoint)
     model = model.eval()
