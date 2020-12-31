@@ -672,6 +672,7 @@ for fold in range(5)[:]:
     
     meanscore = roc_auc_score(yval, preddf[folds[fold]].filter(like='pred').mean(1))
     resdf[f'fold{fold}'].append(meanscore )
+    logger.info(f'Mean pred {fold} AUC {meanscore:.5f}')
     
     for epoch in range(args.epochs):
         for param in model.parameters():
