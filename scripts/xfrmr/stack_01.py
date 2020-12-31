@@ -168,7 +168,7 @@ arg('--dumpdata', type=int, default=0)
 arg('--loaddata', type=int, default=0)
 arg('--bags', type=int, default=4)
 arg('--model', type=str, default='lstm')
-arg('--infer', type=str, default=0)
+arg('--infer', type=int, default=0)
 arg('--label-smoothing', type=float, default=0.01)
 arg('--dir', type=str, default='val')
 #arg('--version', type=str, default='V05')
@@ -521,90 +521,91 @@ class SAKTDataset(Dataset):
         return umat, umask, target
 
 # Should we be stepping; all 0's first, then all 1's, then all 2,s 
-logger.info('Create loader')
-pdicts['daargs'] = daargs = {'cols':pdicts['MODCOLS'], 
-          'padvals':pdicts['PADVALS'], 
-          'carryfwdcols': pdicts['CARRYTASKFWD'],
-          'extracols':pdicts['EXTRACOLS'], 
-          'maxseq': args.maxseq}
-valdataset = SAKTDataset(valid, train, **daargs)
-loaderargs = {'num_workers' : args.workers, 'batch_size' : args.batchsize}
-valloader = DataLoader(valdataset, shuffle=False, **loaderargs)
-x, m, y = next(iter(valloader))
-
-
-laargs = {'modcols':pdicts['MODCOLS'], 
-          'contcols':pdicts['CONTCOLS'], 
-          'padvals':pdicts['PADVALS'], 
-          'extracols':pdicts['EXTRACOLS'], 
-          'device': device, 
-          'dropout': 0.2, 
-          'model_type' : 'lstm', 
-          'hidden' : 512}
-# model = self = LearnNet(**maargs)
-# model.to(device)
-logger.info('Load weights')
-def load_model_weights(modfn, wtname, laargs):
-    logger.info(f'load model version {modfn}, weights {wtname}')
-    model = modfn(**laargs)
-    model.to(device)
-    checkpoint = torch.load(wtname,  map_location=torch.device(device))
-    model.load_state_dict(checkpoint)
-    model = model.eval()
-    return model
-
-modfns = [LearnNet12, LearnNet20,LearnNet20, LearnNet21, LearnNet24]
-wtnames = [f'data/{DIR}/{VERSION}/basemodels/lstm_V12_hidden512_ep4.bin', 
-           f'data/{DIR}/{VERSION}/basemodels/lstm_V20_hidden512_ep4.bin', 
-           f'data/{DIR}/{VERSION}/basemodels/lstm_V20_hidden512_ep7.bin', 
-           f'data/{DIR}/{VERSION}/basemodels/lstm_V21_hidden512_ep3.bin', 
-           f'data/{DIR}/{VERSION}/basemodels/lstm_V24_hidden512_ep3.bin']
-mkeys = ['V12', 'V20A', 'V20B', 'V21', 'V24']
-modeldict = dict((k,load_model_weights(modfn, wtname, laargs)) \
-                 for (k,modfn, wtname) in zip(mkeys,modfns, wtnames))
-wts14 = f'data/{DIR}/{VERSION}/basemodels/lstm_valfull_V14_hidden512_ep12.bin'
-laargs14 = deepcopy(laargs)
-laargs14['maxseq'] = 128
-modeldict['V14'] = load_model_weights(LearnNet14, wts14, laargs14)
-# Sort to keep order constent
-modeldict = OrderedDict((k,modeldict[k]) for k in sorted(modeldict.keys()))
-
-logger.info('Start inference')
-best_val_loss = 100.
-predls = []
-pbarval = tqdm(enumerate(valloader), 
-            total = len(valdataset)//loaderargs['batch_size'], 
-            desc=f"Valid ", ncols=0)
-y_predls = []
-y_act = valid['answered_correctly'].values
-contidx = modeldict['V12'].cont_idx
-contcols = modeldict['V12'].contcols
-
-for step, batch in pbarval:
-    x, m, y = batch
-    preddfb = pd.DataFrame(x[:, -1, contidx].detach().cpu().numpy(), columns = contcols)
-    x = x.to(device, dtype=torch.float)
-    m = m.to(device, dtype=torch.long)
-    for k, model in modeldict.items():
-        if k=='V14':
-            with torch.no_grad(): out = model(x[:,-128:], m[:,-128:], device )
-        else:
-            with torch.no_grad(): out = model(x, m)
-        preddfb[f'pred{k}'] = out.detach().cpu().numpy()
-    y_predls.append(preddfb)
+if args.infer:
+    logger.info('Create loader')
+    pdicts['daargs'] = daargs = {'cols':pdicts['MODCOLS'], 
+              'padvals':pdicts['PADVALS'], 
+              'carryfwdcols': pdicts['CARRYTASKFWD'],
+              'extracols':pdicts['EXTRACOLS'], 
+              'maxseq': args.maxseq}
+    valdataset = SAKTDataset(valid, train, **daargs)
+    loaderargs = {'num_workers' : args.workers, 'batch_size' : args.batchsize}
+    valloader = DataLoader(valdataset, shuffle=False, **loaderargs)
+    x, m, y = next(iter(valloader))
     
-preddf = pd.concat(y_predls, 0)
-preddf['yact'] = y_act
-
-logger.info(f'Preddf head \n {preddf.head()}')
-logger.info(f"Preddf correlations \n {preddf.filter(like='pred').corr()}")
-
-for col, colpred in preddf.filter(like='pred').iteritems():
-    auc_score = roc_auc_score(y_act, colpred )
-    logger.info(f'Valid column {col} AUC Score {auc_score:.5f}')
-outfile = f'data/{DIR}/preddf_lvl1_{VERSION}.pk'
-dumpobj(outfile, preddf)
-logger.info(f'Preds dumped to {outfile}')
+    
+    laargs = {'modcols':pdicts['MODCOLS'], 
+              'contcols':pdicts['CONTCOLS'], 
+              'padvals':pdicts['PADVALS'], 
+              'extracols':pdicts['EXTRACOLS'], 
+              'device': device, 
+              'dropout': 0.2, 
+              'model_type' : 'lstm', 
+              'hidden' : 512}
+    # model = self = LearnNet(**maargs)
+    # model.to(device)
+    logger.info('Load weights')
+    def load_model_weights(modfn, wtname, laargs):
+        logger.info(f'load model version {modfn}, weights {wtname}')
+        model = modfn(**laargs)
+        model.to(device)
+        checkpoint = torch.load(wtname,  map_location=torch.device(device))
+        model.load_state_dict(checkpoint)
+        model = model.eval()
+        return model
+    
+    modfns = [LearnNet12, LearnNet20,LearnNet20, LearnNet21, LearnNet24]
+    wtnames = [f'data/{DIR}/{VERSION}/basemodels/lstm_V12_hidden512_ep4.bin', 
+               f'data/{DIR}/{VERSION}/basemodels/lstm_V20_hidden512_ep4.bin', 
+               f'data/{DIR}/{VERSION}/basemodels/lstm_V20_hidden512_ep7.bin', 
+               f'data/{DIR}/{VERSION}/basemodels/lstm_V21_hidden512_ep3.bin', 
+               f'data/{DIR}/{VERSION}/basemodels/lstm_V24_hidden512_ep3.bin']
+    mkeys = ['V12', 'V20A', 'V20B', 'V21', 'V24']
+    modeldict = dict((k,load_model_weights(modfn, wtname, laargs)) \
+                     for (k,modfn, wtname) in zip(mkeys,modfns, wtnames))
+    wts14 = f'data/{DIR}/{VERSION}/basemodels/lstm_valfull_V14_hidden512_ep12.bin'
+    laargs14 = deepcopy(laargs)
+    laargs14['maxseq'] = 128
+    modeldict['V14'] = load_model_weights(LearnNet14, wts14, laargs14)
+    # Sort to keep order constent
+    modeldict = OrderedDict((k,modeldict[k]) for k in sorted(modeldict.keys()))
+    
+    logger.info('Start inference')
+    best_val_loss = 100.
+    predls = []
+    pbarval = tqdm(enumerate(valloader), 
+                total = len(valdataset)//loaderargs['batch_size'], 
+                desc=f"Valid ", ncols=0)
+    y_predls = []
+    y_act = valid['answered_correctly'].values
+    contidx = modeldict['V12'].cont_idx
+    contcols = modeldict['V12'].contcols
+    
+    for step, batch in pbarval:
+        x, m, y = batch
+        preddfb = pd.DataFrame(x[:, -1, contidx].detach().cpu().numpy(), columns = contcols)
+        x = x.to(device, dtype=torch.float)
+        m = m.to(device, dtype=torch.long)
+        for k, model in modeldict.items():
+            if k=='V14':
+                with torch.no_grad(): out = model(x[:,-128:], m[:,-128:], device )
+            else:
+                with torch.no_grad(): out = model(x, m)
+            preddfb[f'pred{k}'] = out.detach().cpu().numpy()
+        y_predls.append(preddfb)
+        
+    preddf = pd.concat(y_predls, 0)
+    preddf['yact'] = y_act
+    
+    logger.info(f'Preddf head \n {preddf.head()}')
+    logger.info(f"Preddf correlations \n {preddf.filter(like='pred').corr()}")
+    
+    for col, colpred in preddf.filter(like='pred').iteritems():
+        auc_score = roc_auc_score(y_act, colpred )
+        logger.info(f'Valid column {col} AUC Score {auc_score:.5f}')
+    outfile = f'data/{DIR}/preddf_lvl1_{VERSION}.pk'
+    dumpobj(outfile, preddf)
+    logger.info(f'Preds dumped to {outfile}')
 
 
 
@@ -614,7 +615,7 @@ def chunks(lst, n):
         yield lst[i:i + n]
 
 class MLP(nn.Module):
-    def __init__(self, in_dim, hidden_dim = 128, dropout = 0.2):
+    def __init__(self, in_dim, hidden_dim = 256, dropout = 0.2):
         super(MLP, self).__init__()
                 
         self.in_dim = in_dim
@@ -651,7 +652,7 @@ folds = [(rownms%5==i) for i in range(5)]
 
 resdf = defaultdict(list)
 args.epochs = 20
-for fold in range(5):
+for fold in range(5)[:1]:
     resdf[f'fold{fold}']
     Xtrn, Xval = alldf[~folds[fold]], alldf[folds[fold]]
     ytrn, yval = yact[~folds[fold]], yact[folds[fold]]
@@ -708,5 +709,6 @@ for fold in range(5):
         logger.info(f'\t\t\tFold {fold} valid AUC Score {auc_score:.5f}')
         gc.collect()
 
-
-pd.DataFrame(resdf).plot()
+plot = pd.DataFrame(resdf).plot()
+fig = plot.get_figure()
+fig.savefig(f'data/{DIR}/mlp_results_{VERSION}_fold{fold}.png')
