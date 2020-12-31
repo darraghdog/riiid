@@ -161,7 +161,7 @@ arg = parser.add_argument
 arg('--workers', type=int, default=8, help='number of cpu threads to use')
 arg('--batchsize', type=int, default=1024)
 arg('--lr', type=float, default=0.001)
-arg('--epochs', type=int, default=12)
+arg('--epochs', type=int, default=20)
 arg('--maxseq', type=int, default=512)
 arg('--hidden', type=int, default=512)
 arg('--dumpdata', type=int, default=0)
@@ -653,7 +653,7 @@ folds = [(rownms%5==i) for i in range(5)]
 resdf = defaultdict(list)
 #args.epochs = 20
 #args.batchsize = 512
-for fold in range(5)[:1]:
+for fold in range(5)[:]:
     resdf[f'fold{fold}']
     Xtrn, Xval = alldf[~folds[fold]], alldf[folds[fold]]
     ytrn, yval = yact[~folds[fold]], yact[folds[fold]]
