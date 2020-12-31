@@ -708,7 +708,7 @@ for fold in range(5)[:]:
         auc_score = roc_auc_score(yval.numpy(), np.array(ypred)   )
         resdf[f'fold{fold}'].append(auc_score )
     
-        logger.info(f'\t\t\tFold {fold} valid AUC Score {auc_score:.5f}')
+        logger.info(f'\t\t\tFold {fold} epoch {epoch} valid AUC Score {auc_score:.5f}')
         gc.collect()
 
 plot = pd.DataFrame(resdf).plot()
