@@ -60,12 +60,6 @@ class Attention21(nn.Module):
         attentions = torch.softmax(F.relu(weights.squeeze()), dim=-1)
 
         # create mask based on the sentence lengths
-        '''
-        mask = torch.ones(attentions.size(), requires_grad=True).to(device)
-        for i, l in enumerate(lengths):  # skip the first sentence
-            if l < max_len:
-                mask[i, :l] = 0
-        '''
         mask = torch.tensor(mask.float(), requires_grad=True)
 
         # apply mask and renormalize attention scores (weights)
@@ -79,6 +73,8 @@ class Attention21(nn.Module):
 
         # get the final fixed vector representations of the sentences
         representations = weighted.sum(1).squeeze()
+        if representations.ndim == 1:
+            representations = representations.unsqueeze(0)
 
         return representations, attentions
     
