@@ -1,7 +1,6 @@
 # Ripped from https://github.com/selimsef/dfdc_deepfake_challenge/blob/master/training/zoo/classifiers.py
 from functools import partial
-
-import timm
+#import timm
 import numpy as np
 import torch
 from tqdm import tqdm
