@@ -553,7 +553,7 @@ def load_model_weights(modfn, wtname, laargs):
     model = model.eval()
     return model
 
-modfns = [LearnNet12, LearnNet20, LearnNet21, LearnNet24]
+modfns = [LearnNet12, LearnNet20,LearnNet20, LearnNet21, LearnNet24]
 wtnames = [f'data/{DIR}/{VERSION}/basemodels/lstm_V12_hidden512_ep4.bin', 
            f'data/{DIR}/{VERSION}/basemodels/lstm_V20_hidden512_ep4.bin', 
            f'data/{DIR}/{VERSION}/basemodels/lstm_V20_hidden512_ep7.bin', 
