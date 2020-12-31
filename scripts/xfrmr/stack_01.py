@@ -644,50 +644,69 @@ yact = torch.tensor(preddf.yact.values).float()
 preddf = preddf.drop('yact', 1)
 alldf = torch.tensor(preddf.values).float()
 # alldf = (alldf - alldf.mean(0))/(alldf.std(0))
-cut = int(1.5*10**6)
-Xtrn = alldf[:cut]
-Xval = alldf[cut:]
-ytrn = yact[:cut]
-yval = yact[cut:]
-
-model = self = MLP(in_dim = Xtrn.shape[1])
-
-criterion =  nn.BCEWithLogitsLoss()
-param_optimizer = list(model.named_parameters())
-no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
-plist = [ {'params': [p for n, p in param_optimizer] } ]
-optimizer = torch.optim.Adam(plist, lr=args.lr)
-
-for col, colpred in preddf.filter(like='pred').iteritems():
-    auc_score = roc_auc_score(yact[cut:], colpred [cut:])
-    logger.info(f'Valid column {col} AUC Score {auc_score:.5f}')
-
-for epoch in range(args.epochs):
-    for param in model.parameters():
-        param.requires_grad = True
-    model.train()
-    shuffled_list = random.sample(range(Xtrn.shape[0]), k=Xtrn.shape[0])
-    pbartrn = tqdm(enumerate(chunks(shuffled_list, args.batchsize)), 
-                    total = len(shuffled_list)//args.batchsize, 
-                    desc=f"Train epoch {epoch}", ncols=0)
-    trn_loss = 0.
-    for step, chunk in pbartrn:
-        optimizer.zero_grad()
-        x = Xtrn[chunk].to(device, dtype=torch.float)
-        y = ytrn[chunk].to(device, dtype=torch.float)
-        x = torch.autograd.Variable(x, requires_grad=True)
-        y = torch.autograd.Variable(y)
-        out = model(x)
-        loss = criterion(out, y)
-        loss.backward()
-        optimizer.step()
-        trn_loss += loss.item()
-        pbartrn.set_postfix({'train loss': trn_loss / (step + 1)})
-    model.eval()
-    with torch.no_grad():
-        ypred = model(Xval.to(device, dtype=torch.float))
-    auc_score = roc_auc_score(yval.numpy(), ypred.detach().cpu().numpy()   )
-    logger.info(f'Valid AUC Score {auc_score:.5f}')
+rownms = np.array(range(alldf.shape[0]))
+folds = [(rownms%5==i) for i in range(5)]
 
 
 
+resdf = defaultdict(list)
+args.epochs = 20
+for fold in range(5):
+    resdf[f'fold{fold}']
+    Xtrn, Xval = alldf[~folds[fold]], alldf[folds[fold]]
+    ytrn, yval = yact[~folds[fold]], yact[folds[fold]]
+    
+    model = self = MLP(in_dim = Xtrn.shape[1])
+    model.to(device)
+    criterion =  nn.BCEWithLogitsLoss()
+    param_optimizer = list(model.named_parameters())
+    no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
+    plist = [ {'params': [p for n, p in param_optimizer] } ]
+    optimizer = torch.optim.Adam(plist, lr=args.lr)
+    for col, colpred in preddf.filter(like='pred').iteritems():
+        #auc_score = roc_auc_score(yact[cut:], colpred [cut:])
+        auc_score = roc_auc_score(yval, colpred [folds[fold]])
+        logger.info(f'Fold {fold} valid column {col} AUC Score {auc_score:.5f}')
+    
+    meanscore = roc_auc_score(yval, preddf[folds[fold]].filter(like='pred').mean(1))
+    resdf[f'fold{fold}'].append(meanscore )
+    
+    for epoch in range(args.epochs):
+        for param in model.parameters():
+            param.requires_grad = True
+        model.train()
+        shuffled_list = random.sample(range(Xtrn.shape[0]), k=Xtrn.shape[0])
+        batches = list(chunks(shuffled_list, args.batchsize))
+        pbartrn = tqdm(enumerate(batches),
+                        total = (len(shuffled_list)//args.batchsize)-20, 
+                        desc=f"Fold {fold} train epoch {epoch}", ncols=0)
+        trn_loss = 0.
+        for step, chunk in pbartrn:
+            optimizer.zero_grad()
+            x = Xtrn[chunk].to(device, dtype=torch.float)
+            y = ytrn[chunk].to(device, dtype=torch.float)
+            x = torch.autograd.Variable(x, requires_grad=True)
+            y = torch.autograd.Variable(y)
+            out = model(x)
+            loss = criterion(out, y)
+            loss.backward()
+            optimizer.step()
+            trn_loss += loss.item()
+            pbartrn.set_postfix({'train loss': trn_loss / (step + 1)})
+        model.eval()
+        torch.save(model.state_dict(), f'data/{DIR}/mlp_{VERSION}_fold{fold}.bin')
+        vbatches = list(chunks(range(Xval.shape[0]), args.batchsize))
+        pbarval = tqdm(enumerate(vbatches),
+                        desc=f"Fold {fold} valid epoch {epoch}", ncols=0)
+        ypred = []
+        for step, idx in pbarval:
+            with torch.no_grad():
+                ypred += model(Xval[idx].to(device, dtype=torch.float)).detach().cpu().tolist()
+        auc_score = roc_auc_score(yval.numpy(), np.array(ypred)   )
+        resdf[f'fold{fold}'].append(auc_score )
+    
+        logger.info(f'\t\t\tFold {fold} valid AUC Score {auc_score:.5f}')
+        gc.collect()
+
+
+pd.DataFrame(resdf).plot()
