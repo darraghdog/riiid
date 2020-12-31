@@ -193,6 +193,8 @@ class LearnNet24(nn.Module):
         xinpqa = torch.cat([embcatqa, contmat, embcatq, embcatqdiff], 2)
         hiddenqa, _ = self.seqnet(xinpqa)
         hiddenqa, _ = self.atten2(hiddenqa, m)
+        if hiddenqa.ndim == 1:
+            hiddenqa = hiddenqa.unsqueeze(0)
         
         # Take last hidden unit
         hidden = hiddenqa#[:,-1,:]
@@ -310,6 +312,8 @@ class LearnNet21(nn.Module):
         xinpqa = torch.cat([embcatqa, contmat, hiddenq], 2)
         hiddenqa, _ = self.seqnet2(xinpqa)
         hiddenqa, _ = self.atten2(hiddenqa, m)
+        if hiddenqa.ndim == 1:
+            hiddenqa = hiddenqa.unsqueeze(0)
         
         # Take last hidden unit
         hidden = hiddenqa#[:,-1,:]
