@@ -713,4 +713,4 @@ for fold in range(5)[:]:
 
 plot = pd.DataFrame(resdf).plot()
 fig = plot.get_figure()
-fig.savefig(f'data/{DIR}/mlp_results_{VERSION}_fold{fold}.png')
+fig.savefig(f'data/{DIR}/mlp_results_{VERSION}.png')
