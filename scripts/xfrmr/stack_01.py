@@ -556,15 +556,18 @@ def load_model_weights(modfn, wtname, laargs):
 modfns = [LearnNet12, LearnNet20, LearnNet21, LearnNet24]
 wtnames = [f'data/{DIR}/{VERSION}/basemodels/lstm_V12_hidden512_ep4.bin', 
            f'data/{DIR}/{VERSION}/basemodels/lstm_V20_hidden512_ep4.bin', 
-           f'data/{DIR}/{VERSION}/basemodels/lstm_V21_hidden512_ep2.bin', 
+           f'data/{DIR}/{VERSION}/basemodels/lstm_V20_hidden512_ep7.bin', 
+           f'data/{DIR}/{VERSION}/basemodels/lstm_V21_hidden512_ep3.bin', 
            f'data/{DIR}/{VERSION}/basemodels/lstm_V24_hidden512_ep3.bin']
-mkeys = ['V12', 'V20', 'V21', 'V24']
+mkeys = ['V12', 'V20A', 'V20B', 'V21', 'V24']
 modeldict = dict((k,load_model_weights(modfn, wtname, laargs)) \
                  for (k,modfn, wtname) in zip(mkeys,modfns, wtnames))
 wts14 = f'data/{DIR}/{VERSION}/basemodels/lstm_valfull_V14_hidden512_ep12.bin'
 laargs14 = deepcopy(laargs)
 laargs14['maxseq'] = 128
 modeldict['V14'] = load_model_weights(LearnNet14, wts14, laargs14)
+# Sort to keep order constent
+modeldict = OrderedDict((k,modeldict[k]) for k in sorted(modeldict.keys()))
 
 logger.info('Start inference')
 best_val_loss = 100.
@@ -602,3 +605,89 @@ for col, colpred in preddf.filter(like='pred').iteritems():
 outfile = f'data/{DIR}/preddf_lvl1_{VERSION}.pk'
 dumpobj(outfile, preddf)
 logger.info(f'Preds dumped to {outfile}')
+
+
+
+def chunks(lst, n):
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
+
+class MLP(nn.Module):
+    def __init__(self, in_dim, hidden_dim = 128, dropout = 0.2):
+        super(MLP, self).__init__()
+                
+        self.in_dim = in_dim
+        self.hidden_dim = hidden_dim
+        self.cont_wts = nn.Parameter( torch.ones(self.in_dim))
+        self.linear1 = nn.Linear(self.in_dim, self.hidden_dim)
+        self.linear2 = nn.Linear(self.hidden_dim, self.hidden_dim//2)
+        self.linear_out = nn.Linear(self.hidden_dim//2, 1)
+        self.bn = nn.BatchNorm1d(num_features=self.in_dim)
+        self.dropout = nn.Dropout(dropout)
+        
+    def forward(self, x):
+        
+        hidden = self.bn(x)
+        hidden = hidden * self.cont_wts
+        
+        hidden = self.dropout( hidden )
+        hidden  = F.relu(self.linear1(hidden))
+        hidden = self.dropout( hidden )
+        hidden  = F.relu(self.linear2(hidden))
+        out = self.linear_out(hidden).flatten()
+
+        return out
+
+preddf =  loadobj(f'data/{DIR}/preddf_lvl1_{VERSION}.pk')
+yact = torch.tensor(preddf.yact.values).float()
+preddf = preddf.drop('yact', 1)
+alldf = torch.tensor(preddf.values).float()
+# alldf = (alldf - alldf.mean(0))/(alldf.std(0))
+cut = int(1.5*10**6)
+Xtrn = alldf[:cut]
+Xval = alldf[cut:]
+ytrn = yact[:cut]
+yval = yact[cut:]
+
+model = self = MLP(in_dim = Xtrn.shape[1])
+
+criterion =  nn.BCEWithLogitsLoss()
+param_optimizer = list(model.named_parameters())
+no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
+plist = [ {'params': [p for n, p in param_optimizer] } ]
+optimizer = torch.optim.Adam(plist, lr=args.lr)
+
+for col, colpred in preddf.filter(like='pred').iteritems():
+    auc_score = roc_auc_score(yact[cut:], colpred [cut:])
+    logger.info(f'Valid column {col} AUC Score {auc_score:.5f}')
+
+for epoch in range(args.epochs):
+    for param in model.parameters():
+        param.requires_grad = True
+    model.train()
+    shuffled_list = random.sample(range(Xtrn.shape[0]), k=Xtrn.shape[0])
+    pbartrn = tqdm(enumerate(chunks(shuffled_list, args.batchsize)), 
+                    total = len(shuffled_list)//args.batchsize, 
+                    desc=f"Train epoch {epoch}", ncols=0)
+    trn_loss = 0.
+    for step, chunk in pbartrn:
+        optimizer.zero_grad()
+        x = Xtrn[chunk].to(device, dtype=torch.float)
+        y = ytrn[chunk].to(device, dtype=torch.float)
+        x = torch.autograd.Variable(x, requires_grad=True)
+        y = torch.autograd.Variable(y)
+        out = model(x)
+        loss = criterion(out, y)
+        loss.backward()
+        optimizer.step()
+        trn_loss += loss.item()
+        pbartrn.set_postfix({'train loss': trn_loss / (step + 1)})
+    model.eval()
+    with torch.no_grad():
+        ypred = model(Xval.to(device, dtype=torch.float))
+    auc_score = roc_auc_score(yval.numpy(), ypred.detach().cpu().numpy()   )
+    logger.info(f'Valid AUC Score {auc_score:.5f}')
+
+
+
