@@ -651,7 +651,8 @@ folds = [(rownms%5==i) for i in range(5)]
 
 
 resdf = defaultdict(list)
-args.epochs = 20
+#args.epochs = 20
+#args.batchsize = 512
 for fold in range(5)[:1]:
     resdf[f'fold{fold}']
     Xtrn, Xval = alldf[~folds[fold]], alldf[folds[fold]]
