@@ -553,7 +553,7 @@ if args.infer:
         model.load_state_dict(checkpoint)
         model = model.eval()
         return model
-    
+    '''
     modfns = [LearnNet12]*2 + [LearnNet20]*5 + [LearnNet21, LearnNet24, LearnNet27, LearnNet28]
     wtnames = [f'data/{DIR}/{VERSION}/basemodels/lstm_V12_hidden512_ep6.bin', 
                f'data/{DIR}/{VERSION}/basemodels/lstm_V12_hidden512_ep7.bin', 
@@ -568,6 +568,23 @@ if args.infer:
                f'data/{DIR}/{VERSION}/basemodels/lstm_V28_hidden512_ep3.bin', 
                ]
     mkeys = ['V12_6', 'V12_7', 'V20_3', 'V20_4', 'V20_5', 'V20_6', 'V20_7', 'V21_3', 'V24_3', 'V27_3', 'V28_3']
+    '''
+    modfns = [LearnNet12]*2 + [LearnNet20]*5 + [LearnNet27] * 2 + [LearnNet28]
+    wtnames = [f'data/{DIR}/{VERSION}/basemodels/lstm_V12_hidden512_ep6.bin', 
+               f'data/{DIR}/{VERSION}/basemodels/lstm_V12_hidden512_ep7.bin', 
+               f'data/{DIR}/{VERSION}/basemodels/lstm_V20_hidden512_ep3.bin', 
+               f'data/{DIR}/{VERSION}/basemodels/lstm_V20_hidden512_ep4.bin', 
+               f'data/{DIR}/{VERSION}/basemodels/lstm_V20_hidden512_ep5.bin', 
+               f'data/{DIR}/{VERSION}/basemodels/lstm_V20_hidden512_ep6.bin', 
+               f'data/{DIR}/{VERSION}/basemodels/lstm_V20_hidden512_ep7.bin',
+               f'data/{DIR}/{VERSION}/basemodels/lstm_V21_hidden512_ep3.bin', 
+               f'data/{DIR}/{VERSION}/basemodels/lstm_V24_hidden512_ep3.bin',
+               f'data/{DIR}/{VERSION}/basemodels/lstm_V27_hidden512_ep3.bin', 
+               f'data/{DIR}/{VERSION}/basemodels/lstm_V27_hidden512_ep4.bin', 
+               f'data/{DIR}/{VERSION}/basemodels/lstm_V28_hidden512_ep3.bin', 
+               ]
+    mkeys = ['V12_6', 'V12_7', 'V20_3', 'V20_4', 'V20_5', 'V20_6', 'V20_7', 'V27_3', 'V27_4', 'V28_3']
+    
     modeldict = dict((k,load_model_weights(modfn, wtname, laargs)) \
                      for (k,modfn, wtname) in zip(mkeys,modfns, wtnames))
     '''
