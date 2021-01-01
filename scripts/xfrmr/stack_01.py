@@ -32,7 +32,7 @@ from torch.cuda.amp import autocast
 from sklearn.metrics import log_loss
 from tools.utils import get_logger, SpatialDropout, split_tags
 from tools.config import load_config
-from tools.zoo import LearnNet12,LearnNet14, LearnNet20, LearnNet21, LearnNet24
+from tools.zoo import LearnNet12,LearnNet14, LearnNet20, LearnNet21, LearnNet24, LearnNet27, LearnNet28
 from transformers import XLMModel, XLMConfig
 from copy import deepcopy
 
