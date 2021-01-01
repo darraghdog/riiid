@@ -554,19 +554,23 @@ if args.infer:
         model = model.eval()
         return model
     
-    modfns = [LearnNet12, LearnNet20,LearnNet20, LearnNet21, LearnNet24]
-    wtnames = [f'data/{DIR}/{VERSION}/basemodels/lstm_V12_hidden512_ep4.bin', 
+    modfns = [LearnNet12]*2 + [LearnNet20]*5
+    wtnames = [f'data/{DIR}/{VERSION}/basemodels/lstm_V12_hidden512_ep6.bin', 
+               f'data/{DIR}/{VERSION}/basemodels/lstm_V12_hidden512_ep7.bin', 
+               f'data/{DIR}/{VERSION}/basemodels/lstm_V20_hidden512_ep3.bin', 
                f'data/{DIR}/{VERSION}/basemodels/lstm_V20_hidden512_ep4.bin', 
-               f'data/{DIR}/{VERSION}/basemodels/lstm_V20_hidden512_ep7.bin', 
-               f'data/{DIR}/{VERSION}/basemodels/lstm_V21_hidden512_ep3.bin', 
-               f'data/{DIR}/{VERSION}/basemodels/lstm_V24_hidden512_ep3.bin']
-    mkeys = ['V12', 'V20A', 'V20B', 'V21', 'V24']
+               f'data/{DIR}/{VERSION}/basemodels/lstm_V20_hidden512_ep5.bin', 
+               f'data/{DIR}/{VERSION}/basemodels/lstm_V20_hidden512_ep6.bin', 
+               f'data/{DIR}/{VERSION}/basemodels/lstm_V20_hidden512_ep7.bin']
+    mkeys = ['V12_6', 'V12_7', 'V20_3', 'V20_4', 'V20_5', 'V20_6', 'V20_7']
     modeldict = dict((k,load_model_weights(modfn, wtname, laargs)) \
                      for (k,modfn, wtname) in zip(mkeys,modfns, wtnames))
+    '''
     wts14 = f'data/{DIR}/{VERSION}/basemodels/lstm_valfull_V14_hidden512_ep12.bin'
     laargs14 = deepcopy(laargs)
     laargs14['maxseq'] = 128
     modeldict['V14'] = load_model_weights(LearnNet14, wts14, laargs14)
+    '''
     # Sort to keep order constent
     modeldict = OrderedDict((k,modeldict[k]) for k in sorted(modeldict.keys()))
     
@@ -578,8 +582,8 @@ if args.infer:
                 desc=f"Valid ", ncols=0)
     y_predls = []
     y_act = valid['answered_correctly'].values
-    contidx = modeldict['V12'].cont_idx
-    contcols = modeldict['V12'].contcols
+    contidx = modeldict['V12_6'].cont_idx
+    contcols = modeldict['V12_6'].contcols
     
     for step, batch in pbarval:
         x, m, y = batch
