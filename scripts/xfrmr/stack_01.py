@@ -554,7 +554,7 @@ if args.infer:
         model = model.eval()
         return model
     
-    modfns = [LearnNet12]*2 + [LearnNet20]*5 + [LearnNet21, LearnNet24]
+    modfns = [LearnNet12]*2 + [LearnNet20]*5 + [LearnNet21, LearnNet24, LearnNet27, LearnNet28]
     wtnames = [f'data/{DIR}/{VERSION}/basemodels/lstm_V12_hidden512_ep6.bin', 
                f'data/{DIR}/{VERSION}/basemodels/lstm_V12_hidden512_ep7.bin', 
                f'data/{DIR}/{VERSION}/basemodels/lstm_V20_hidden512_ep3.bin', 
