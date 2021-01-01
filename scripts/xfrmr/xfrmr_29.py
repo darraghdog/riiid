@@ -188,8 +188,8 @@ FILTCOLS = ['row_id', 'user_id', 'content_id', 'content_type_id',  \
                        'timestamp', 'user_answer']
 logger.info(f'Loaded columns {", ".join(FILTCOLS)}')
 
-valid = pd.read_feather(f'data/{DIR}/cv{CUT+1}_valid.feather')[FILTCOLS]
-train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS]
+valid = pd.read_feather(f'data/{DIR}/cv{CUT+1}_valid.feather')[FILTCOLS].head(10**5)
+train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS].tail(10**6)
 
 train = train.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
 valid = valid.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
@@ -644,8 +644,11 @@ class LearnNet29(nn.Module):
         embcatqdiff = embcatq[:,:,:self.diffsize] - embcatq[:,-1,:self.diffsize].unsqueeze(1)
             
         # Categroical embeddings
-        correctidx = x[:,:, self.modcols.index('content_id')].long() * 2 + \
-                        x[:,:, self.modcols.index('answered_correctly')].long()
+        # Shift the contend id to make it align correctly to the target
+        correctidx = torch.cat([ x[:,:1 , self.modcols.index('content_id')], 
+                            x[:,:-1, self.modcols.index('content_id')]],1)
+        correctidx[:,:1] = 13522
+        correctidx = correctidx.long() * 2 + x[:,:, self.modcols.index('answered_correctly')].long()
         embcatqa = torch.cat([
             #self.emb_content_id(  x[:,:, self.modcols.index('content_id')].long()  ),
             #self.emb_bundle_id(  x[:,:, self.modcols.index('bundle_id')].long()  ),
