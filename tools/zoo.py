@@ -656,8 +656,7 @@ class LearnNet14(nn.Module):
 
 class LearnNet27(nn.Module):
     def __init__(self, modcols, contcols, padvals, extracols, 
-                 device = device, dropout = 0.2, model_type = args.model, 
-                 hidden = args.hidden):
+                 device, dropout, model_type, hidden, maxseq):
         super(LearnNet27, self).__init__()
         
         self.dropout = nn.Dropout(dropout)
@@ -771,9 +770,8 @@ class LearnNet27(nn.Module):
         return out
 
 class LearnNet28(nn.Module):
-    def __init__(self, modcols, contcols, padvals, extracols, 
-                 device = device, dropout = 0.2, model_type = args.model, 
-                 hidden = args.hidden):
+    def __init__(self, modcols, contcols, padvals, extracols,
+                 device, dropout, model_type, hidden, maxseq):
         super(LearnNet28, self).__init__()
         
         self.dropout = nn.Dropout(dropout)
