@@ -580,12 +580,12 @@ if args.infer:
                f'data/{DIR}/{VERSION}/basemodels/lstm_V20_hidden512_ep8.bin',
                #f'data/{DIR}/{VERSION}/basemodels/lstm_V21_hidden512_ep3.bin', 
                #f'data/{DIR}/{VERSION}/basemodels/lstm_V24_hidden512_ep3.bin',
-               f'data/{DIR}/{VERSION}/basemodels/lstm_V27_hidden512_ep4.bin', 
-               f'data/{DIR}/{VERSION}/basemodels/lstm_V27_hidden512_ep5.bin', 
-               f'data/{DIR}/{VERSION}/basemodels/lstm_V28_hidden512_ep3.bin', 
-               f'data/{DIR}/{VERSION}/basemodels/lstm_V28_hidden512_ep4.bin', 
+               f'data/{DIR}/{VERSION}/basemodels/lstm_V27_hidden512_ep6.bin', 
+               f'data/{DIR}/{VERSION}/basemodels/lstm_V27_hidden512_ep7.bin', 
+               f'data/{DIR}/{VERSION}/basemodels/lstm_V28_hidden512_ep5.bin', 
+               f'data/{DIR}/{VERSION}/basemodels/lstm_V28_hidden512_ep6.bin', 
                ]
-    mkeys = ['V12_6', 'V12_7', 'V20_4', 'V20_6', 'V20_7', 'V20_8', 'V27_4', 'V27_5', 'V28_3', 'V28_4']
+    mkeys = ['V12_6', 'V12_7', 'V20_4', 'V20_6', 'V20_7', 'V20_8', 'V27_6', 'V27_7', 'V28_5', 'V28_6']
     
     modeldict = dict((k,load_model_weights(modfn, wtname, laargs)) \
                      for (k,modfn, wtname) in zip(mkeys,modfns, wtnames))
