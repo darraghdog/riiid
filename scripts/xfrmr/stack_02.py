@@ -182,7 +182,7 @@ logger.info(args)
 device = 'cpu' if platform.system() == 'Darwin' else 'cuda'
 CUT=0
 DIR=args.dir#'val'
-VERSION='V01S'#args.version
+VERSION='V02S'#args.version
 debug = False
 validaten_flg = False
 
