@@ -569,7 +569,7 @@ if args.infer:
                ]
     mkeys = ['V12_6', 'V12_7', 'V20_3', 'V20_4', 'V20_5', 'V20_6', 'V20_7', 'V21_3', 'V24_3', 'V27_3', 'V28_3']
     '''
-    modfns = [LearnNet12]*2 + [LearnNet20]*2 + [LearnNet27] * 2 + [LearnNet28] * 2 + [LearnNet29] * 1
+    modfns = [LearnNet12]*1 + [LearnNet20]*2 + [LearnNet27] * 2 + [LearnNet28] * 2 + [LearnNet29] * 2
     wtnames = [f'data/{DIR}/{VERSION}/basemodels/lstm_V12_hidden512_ep7.bin', 
                #f'data/{DIR}/{VERSION}/basemodels/lstm_V20_hidden512_ep3.bin', 
                #f'data/{DIR}/{VERSION}/basemodels/lstm_V20_hidden512_ep5.bin', 
