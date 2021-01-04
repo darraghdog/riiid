@@ -548,7 +548,7 @@ def randShuffleSort(dseq, clip = 0.01 ):
     clipct = int(clip*len(quidxdf))
     quidxmat = quidxdf.iloc[ clipct : -clipct ][['user', 'index']].values
     # Deck of card shuffle
-    quidxmat  = np.array_split(quidxmat , 10)
+    quidxmat  = np.array_split(quidxmat , 3)
     random.shuffle(quidxmat )
     quidxmat = np.concatenate(quidxmat)
     
