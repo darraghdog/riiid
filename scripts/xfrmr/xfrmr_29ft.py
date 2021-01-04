@@ -159,6 +159,7 @@ arg = parser.add_argument
 arg('--workers', type=int, default=8, help='number of cpu threads to use')
 arg('--batchsize', type=int, default=1024)
 arg('--lr', type=float, default=0.001)
+arg('--dropout', type=float, default=0.2)
 arg('--epochs', type=int, default=12)
 arg('--maxseq', type=int, default=128)
 arg('--hidden', type=int, default=256)
@@ -689,7 +690,7 @@ pdicts['maargs'] = maargs = {'modcols':pdicts['MODCOLS'],
 
 WTS= 'lstm_V29_hidden512_ep7.bin'
 WTSDIR = f'data/valfull/V01S/basemodels/{WTS}'
-model = self = LearnNet29(**maargs)
+model = self = LearnNet29(dropout = args.dropout, **maargs)
 model.to(device)
 checkpoint = torch.load(WTSDIR,  map_location=torch.device(device))
 model.load_state_dict(checkpoint)
