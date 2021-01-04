@@ -188,8 +188,8 @@ FILTCOLS = ['row_id', 'user_id', 'content_id', 'content_type_id',  \
                        'timestamp', 'user_answer']
 logger.info(f'Loaded columns {", ".join(FILTCOLS)}')
 
-valid = pd.read_feather(f'data/{DIR}/cv{CUT+1}_valid.feather')[FILTCOLS].head(10**5)
-train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS].tail(10**6)
+valid = pd.read_feather(f'data/{DIR}/cv{CUT+1}_valid.feather')[FILTCOLS]#.head(10**5)
+train = pd.read_feather(f'data/{DIR}/cv{CUT+1}_train.feather')[FILTCOLS]#.tail(10**6)
 
 train = train.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
 valid = valid.sort_values(['user_id', 'timestamp']).reset_index(drop = True)
@@ -609,12 +609,11 @@ class LearnNet31(nn.Module):
         self.seqnet1 = nn.LSTM(IN_UNITSQ, LSTM_UNITS, bidirectional=False, batch_first=True)
         self.seqnet2 = nn.LSTM(IN_UNITSQA + LSTM_UNITS, LSTM_UNITS, bidirectional=False, batch_first=True)
             
-        self.linear1 = nn.Linear(LSTM_UNITS * 2 + len(self.contcols), LSTM_UNITS//2)
+        self.linear1 = nn.Linear(LSTM_UNITS * 2 + len(self.contcols), 64)
         self.bn0 = nn.BatchNorm1d(num_features=len(self.contcols))
         self.bn1 = nn.BatchNorm1d(num_features=LSTM_UNITS * 2 + len(self.contcols))
         self.bn2 = nn.BatchNorm1d(num_features=64)
-        
-        self.linear_out = nn.Linear(LSTM_UNITS//2, 1)
+        self.linear_out = nn.Linear(64, 1)
         
     def forward(self, x, m = None):
         
