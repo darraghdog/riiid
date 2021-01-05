@@ -564,6 +564,7 @@ class LearnNet29(nn.Module):
         super(LearnNet29, self).__init__()
         
         self.dropout = nn.Dropout(dropout)
+        self.dropoutlast = nn.Dropout(0.5)
         
         self.padvals = padvals
         self.extracols = extracols
@@ -676,7 +677,7 @@ class LearnNet29(nn.Module):
         hidden = torch.cat([hiddenqa[:,-1,:], hiddenq[:,-1,:], contmat[:, -1]], 1)
         hidden = self.dropout( self.bn1( hidden) )
         hidden  = F.relu(self.linear1(hidden))
-        hidden = self.dropout(self.bn2(hidden))
+        hidden = self.dropoutlast(self.bn2(hidden))
         out = self.linear_out(hidden).flatten()
         
         return out
@@ -691,7 +692,7 @@ pdicts['maargs'] = maargs = {'modcols':pdicts['MODCOLS'],
 
 WTS= 'lstm_V29_hidden512_ep7.bin'
 WTSDIR = f'data/valfull/V01S/basemodels/{WTS}'
-model = self = LearnNet29(dropout = args.dropout, **maargs)
+model = self = LearnNet29(dropout = args.dropout, hidden = 512, **maargs)
 model.to(device)
 checkpoint = torch.load(WTSDIR,  map_location=torch.device(device))
 model.load_state_dict(checkpoint)
