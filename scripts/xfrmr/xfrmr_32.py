@@ -607,10 +607,10 @@ class LearnNet32(nn.Module):
                     self.emb_lpart.embedding_dim + self.emb_ltag.embedding_dim + \
                         self.emb_prior.embedding_dim + self.emb_content_id_prior.embedding_dim + \
                         len(self.cont_idxcts)
-        IN_UNITSQA = ( self.emb_lag_time.embedding_dim + self.emb_elapsed_time.embedding_dim + \
-                self.emb_cont_user_answer.embedding_dim) + self.emb_cont_correct_answer.embedding_dim + \
+        IN_UNITSQA = 2 * ( self.emb_lag_time.embedding_dim + self.emb_elapsed_time.embedding_dim + \
+                self.emb_cont_user_answer.embedding_dim + self.emb_cont_correct_answer.embedding_dim) + \
                 len(self.contcols)
-        LSTM_UNITS = hidden 
+        LSTM_UNITS = hidden = args.hidden
         self.diffsize = self.emb_content_id.embedding_dim + self.emb_part.embedding_dim + \
                         self.emb_bundle_id.embedding_dim + self.emb_tag.embedding_dim * 7 
         
@@ -668,16 +668,16 @@ class LearnNet32(nn.Module):
             self.emb_elapsed_time(  x[:,:, self.modcols.index('elapsed_time_cat')].long()  )
             ] #+ [self.emb_tag(x[:,:, ii.item()].long()) for ii in torch.where(self.tag_idx)[0]]
             , 2)
-        #embcatqadiff = embcatqa - embcatqa[:,-1].unsqueeze(1)
+        embcatqadiff = embcatqa - embcatqa[:,-1].unsqueeze(1)
         embcatq = self.embedding_dropout(embcatq)
         embcatqa = self.embedding_dropout(embcatqa)
         embcatqdiff = self.embedding_dropout(embcatqdiff)
-        #embcatqadiff = self.embedding_dropout(embcatqadiff)
+        embcatqadiff = self.embedding_dropout(embcatqadiff)
         
         # Weighted sum of tags - hopefully good weights are learnt
         xinpq = torch.cat([embcatq, embcatqdiff, contmat[:,:,self.cont_idxcts]], 2)
         hiddenq, _ = self.seqnet1(xinpq)
-        xinpqa = torch.cat([embcatqa, contmat, hiddenq], 2)
+        xinpqa = torch.cat([embcatqa, embcatqadiff, contmat, hiddenq], 2)
         hiddenqa, _ = self.seqnet2(xinpqa)
         
         # Take last hidden unit
