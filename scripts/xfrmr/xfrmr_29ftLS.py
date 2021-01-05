@@ -508,7 +508,7 @@ class SAKTDataset(Dataset):
         umat[:, self.timecols] = np.log10( 1.+ umat[:, self.timecols] / 60  ) 
         
         if self.has_target:
-            target = umat[-1, self.yidx ]
+            target = np.clip(umat[-1, self.yidx ], args.smooth, 1-args.smooth)
             umat[:, self.targetidx] = np.concatenate((self.padtarget, \
                                                       umat[:-1, self.targetidx]), 0)
         if target > 1:
@@ -758,7 +758,6 @@ for epoch in range(args.epochs):
 
         optimizer.zero_grad()
         x, m, y = batch
-        y = y.clip(args.smooth, 1-args.smooth)
         x = x.to(device, dtype=torch.float)
         m = m.to(device, dtype=torch.long)
         y = y.to(device, dtype=torch.float)
