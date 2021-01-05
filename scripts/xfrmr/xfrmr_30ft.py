@@ -683,7 +683,7 @@ pdicts['maargs'] = maargs = {'modcols':pdicts['MODCOLS'],
 
 WTS= 'lstm_V30_hidden768_ep7.bin'
 WTSDIR = f'data/valfull/V01S/basemodels/{WTS}'
-model = self = LearnNet28(dropout = args.dropout, **maargs)
+model = self = LearnNet28(**maargs)
 model.to(device)
 checkpoint = torch.load(WTSDIR,  map_location=torch.device(device))
 model.load_state_dict(checkpoint)
