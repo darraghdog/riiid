@@ -780,7 +780,7 @@ for epoch in range(args.epochs):
         yqa = torch.autograd.Variable(yqa)
 
         out, outqa = model(x, m, qa = True)
-        loss = criterion(out, y) #* 0.9 + 0.1 * criterion(outqa, yqa)
+        loss = criterion(out, y) * 0.8 + 0.2 * criterion(outqa, yqa)
         loss.backward()
         optimizer.step()
         '''
