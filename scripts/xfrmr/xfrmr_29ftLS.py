@@ -564,7 +564,7 @@ class LearnNet29(nn.Module):
         super(LearnNet29, self).__init__()
         
         self.dropout = nn.Dropout(dropout)
-        self.dropoutlast = nn.Dropout(0.5)
+        self.dropoutlast = nn.Dropout(dropout)
         
         self.padvals = padvals
         self.extracols = extracols
