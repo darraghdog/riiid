@@ -597,6 +597,9 @@ if args.infer:
     
     modeldict = dict((k,load_model_weights(modfn, wtname, laargs)) \
                      for (k,modfn, wtname) in zip(mkeys,modfns, wtnames))
+    laargs['hidden'] = 768
+    wtname = f'data/{DIR}/{VERSION}/basemodels/lstm_V30FT_hidden768_ep0.bin'
+    modeldict['V30_0FT'] = load_model_weights(LearnNet28, wtname, laargs)
     '''
     wts14 = f'data/{DIR}/{VERSION}/basemodels/lstm_valfull_V14_hidden512_ep12.bin'
     laargs14 = deepcopy(laargs)
