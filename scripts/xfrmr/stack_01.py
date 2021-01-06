@@ -587,6 +587,15 @@ if args.infer:
                ]
     mkeys = ['V12_7', 'V20_7', 'V20_8', 'V27_6', 'V27_7', 'V28_6', 'V28_7', 'V29_6', 'V29_7']
     
+    
+    modfns = [LearnNet12]*0 + [LearnNet20]*1 + [LearnNet27] * 1 + [LearnNet28] * 1 + [LearnNet29] * 1
+    wtnames = [f'data/{DIR}/{VERSION}/basemodels/lstm_V20ft_hidden512_ep4.bin', 
+               f'data/{DIR}/{VERSION}/basemodels/lstm_V27FT_hidden512_ep0.bin', 
+               f'data/{DIR}/{VERSION}/basemodels/lstm_V28FT_hidden512_ep5.bin', 
+               f'data/{DIR}/{VERSION}/basemodels/lstm_V29FT_hidden512_ep4.bin', 
+               ]
+    mkeys = ['V20_4FT', 'V27_0FT', 'V28_5FT', 'V29_2FT']
+    
     modeldict = dict((k,load_model_weights(modfn, wtname, laargs)) \
                      for (k,modfn, wtname) in zip(mkeys,modfns, wtnames))
     '''
