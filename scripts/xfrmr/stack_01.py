@@ -614,8 +614,8 @@ if args.infer:
                 desc=f"Valid ", ncols=0)
     y_predls = []
     y_act = valid['answered_correctly'].values
-    contidx = modeldict['V12_7'].cont_idx
-    contcols = modeldict['V12_7'].contcols
+    contidx = modeldict['V20_4FT'].cont_idx
+    contcols = modeldict['V20_4FT'].contcols
     
     for step, batch in pbarval:
         x, m, y = batch
