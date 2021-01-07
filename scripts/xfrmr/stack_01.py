@@ -591,14 +591,14 @@ if args.infer:
     wtnames = [f'data/{DIR}/{VERSION}/basemodels/lstm_V20ft_hidden512_ep4.bin', 
                f'data/{DIR}/{VERSION}/basemodels/lstm_V27FT_hidden512_ep0.bin', 
                f'data/{DIR}/{VERSION}/basemodels/lstm_V28FT_hidden512_ep5.bin', 
-               f'data/{DIR}/{VERSION}/basemodels/lstm_V29FT_hidden512_ep4.bin', 
+               f'data/{DIR}/{VERSION}/basemodels/lstm_V29FTLS_hidden512_ep8.bin', 
                ]
     mkeys = ['V20_4FT', 'V27_0FT', 'V28_5FT', 'V29_2FT']
     
     modeldict = dict((k,load_model_weights(modfn, wtname, laargs)) \
                      for (k,modfn, wtname) in zip(mkeys,modfns, wtnames))
     laargs['hidden'] = 768
-    wtname = f'data/{DIR}/{VERSION}/basemodels/lstm_V30FT_hidden768_ep2.bin'
+    wtname = f'data/{DIR}/{VERSION}/basemodels/lstm_V30FT_hidden768_ep3.bin'
     modeldict['V30_0FT'] = load_model_weights(LearnNet28, wtname, laargs)
     '''
     wts14 = f'data/{DIR}/{VERSION}/basemodels/lstm_valfull_V14_hidden512_ep12.bin'
